@@ -7,11 +7,11 @@ batch_size: 128
 n_atoms_allowed: null
 shuffle_train: True
 permute_indices: False
-num_train: 55000
-num_val: 10000
-num_test: 10000
-num_workers: 8
-remove_uncharacterized: True
+num_train: 550
+num_val: 100
+num_test: 10
+num_workers: 4
+remove_uncharacterized: False
 n_overfit_molecules: null
 distance_unit: Ang
 pin_memory: True

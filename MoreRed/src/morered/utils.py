@@ -15,6 +15,9 @@ from tqdm import tqdm
 import morered as mrd
 from morered.bonds import allowed_bonds_dict, bonds1, bonds2, bonds3
 
+import hydra
+import logging
+log = logging.getLogger(__name__)
 
 def batch_center_systems(
     systems: torch.Tensor, idx_m: torch.Tensor, n_atoms: torch.Tensor, dim: int = 0
@@ -403,3 +406,19 @@ def generate_bonds_data(save_path: Optional[str] = None, overwrite: bool = False
         pickle.dump(data, f)
 
     return data
+
+
+def get_max_atoms(dataset):
+    dl =dataset.train_dataloader()
+    log.info(f"dataset has {len(dl.dataset)} samples. and type {type(dl.dataset)}")
+    max_atoms = 0
+    log.info("Computing max atoms in the dataset...")
+    for batch in dl:
+        batch_atoms = max(max_atoms, batch["_n_atoms"].max().item())
+        if batch_atoms > max_atoms:
+            max_atoms = batch_atoms
+    log.info(f"Max atoms in the dataset: {max_atoms}")
+    return max_atoms
+
+
+ 

@@ -3,3 +3,4 @@
 defaults:
   - vp_gauss_ddpm
   - override /data: qm9_filtered
+  

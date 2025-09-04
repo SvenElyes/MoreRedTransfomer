@@ -1,4 +1,22 @@
 #!/usr/bin/env python3
+import os
+import sys
+
+
+# Absolute path to the 'src' directory
+script_dir = os.path.dirname(os.path.abspath(__file__))  # src/scripts
+src_path = os.path.abspath(os.path.join(script_dir, '..'))  # src/
+
+# Add src to sys.path if not already
+if src_path not in sys.path:
+    sys.path.insert(0, src_path)
+
+# Verify the path and contents
+print("sys.path:", sys.path)
+print("src_path exists:", os.path.exists(src_path))
+print("Contents:", os.listdir(src_path))
+
+# Import morered
 import morered.train as train
 
 if __name__ == "__main__":

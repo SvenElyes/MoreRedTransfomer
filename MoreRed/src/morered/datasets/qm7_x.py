@@ -10,7 +10,7 @@ from urllib import request as request
 
 import h5py
 import numpy as np
-import progressbar
+#import progressbar
 import torch
 from ase import Atoms
 from schnetpack.data import (
@@ -37,8 +37,9 @@ def show_progress(block_num: int, block_size: int, total_size: int):
     """
     global pbar
     if pbar is None:
-        pbar = progressbar.ProgressBar(maxval=total_size)
-        pbar.start()
+        pass
+        #pbar = progressbar.ProgressBar(maxval=total_size)
+        #pbar.start()
 
     downloaded = block_num * block_size
     if downloaded < total_size:
