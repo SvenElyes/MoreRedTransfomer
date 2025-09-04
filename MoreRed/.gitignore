@@ -117,3 +117,6 @@ ENV/
 # experiments
 runs/
 experiments/
+
+# apptainer
+.sif
