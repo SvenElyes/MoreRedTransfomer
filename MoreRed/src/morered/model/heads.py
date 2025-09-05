@@ -1,5 +1,5 @@
 from typing import Callable, Dict, Optional, Sequence, Union
-
+import logging
 import schnetpack as spk
 import schnetpack.properties as properties
 import torch
@@ -8,6 +8,7 @@ import torch.nn.functional as F
 
 __all__ = ["TimeAwareAtomwise", "TimeAwareEquivariant", "DiffusionTime"]
 
+log = logging.getLogger(__name__)
 
 class TimeAwareAtomwise(spk.atomistic.Atomwise):
     """
@@ -141,6 +142,7 @@ class TimeAwareEquivariant(nn.Module):
         self.model_outputs = [output_key]
 
         self.include_time = include_time
+        log.info(f"Include time in {self.__class__.__name__}: {self.include_time} and output key: {self.output_key}")
         # add time as input scalar feature
         if self.include_time:
             self.outnet[0] = spk.nn.GatedEquivariantBlock(
@@ -154,6 +156,7 @@ class TimeAwareEquivariant(nn.Module):
             )
 
         # time prediction
+        log.info(f"Time head in {self.__class__.__name__}: {time_head} and time key: {time_key}")
         self.time_outnet = time_head
         self.detach_time_head = detach_time_head
 
@@ -165,6 +168,14 @@ class TimeAwareEquivariant(nn.Module):
             )
 
     def forward(self, inputs: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
+        log.info("trying to undertsand input and shape and keys")
+        log.info(f"input keys: {inputs.keys()}")
+        log.info(f"scalar representation shape: {inputs['scalar_representation'].shape}")
+        log.info(f"vector representation shape: {inputs['vector_representation'].shape}")
+        log.info(f"time key: {self.time_key}")
+        log.info(f"some time value examples: {inputs[self.time_key][0:5] if self.include_time else 'N/A'}")
+        log.info(f"true time shape: {inputs[self.time_key].shape if self.include_time else 'N/A'}")
+        log.info(f"time example : {inputs[self.time_key][0:5] if self.include_time else 'N/A'}")
         l0 = inputs["scalar_representation"]
         l1 = inputs["vector_representation"]
 
@@ -186,8 +197,11 @@ class TimeAwareEquivariant(nn.Module):
             l0 = torch.cat((l0, t), dim=-1)
 
         # predict equivariant output
-        _, x = self.outnet((l0, l1))
+        
+        _, x = self.outnet((l0, l1)) #gated equivariant mlp returns a tuple (scalar, vector)
+        log.info(f"Output shape before squeeze: {x.shape}") 
         x = torch.squeeze(x, -1)
+        
         inputs[self.output_key] = x
 
         return inputs

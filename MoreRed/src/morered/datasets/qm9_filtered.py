@@ -7,10 +7,15 @@ import numpy as np
 from schnetpack import properties
 from schnetpack.data import AtomsLoader, load_dataset
 from schnetpack.datasets import QM9
+import schnetpack.properties as structure
 from tqdm import tqdm
 
-__all__ = ["QM9Filtered"]
 
+from scipy.spatial.transform import Rotation
+import torch as th
+import torch
+__all__ = ["QM9Filtered"]
+log = logging.getLogger(__name__)
 
 class QM9Filtered(QM9):
     """
@@ -28,6 +33,9 @@ class QM9Filtered(QM9):
         n_overfit_molecules: Optional[int] = None,
         permute_indices: bool = False,
         repeat_indices: int = 0,
+        train_rotate: bool = True,
+        train_reflection: bool = True,
+        train_rotate_n_copies: int = 2,
         **kwargs
     ):
         """
@@ -51,6 +59,9 @@ class QM9Filtered(QM9):
         self.n_overfit_molecules = n_overfit_molecules
         self.permute_indices = permute_indices
         self.repeat_indices = repeat_indices
+        self.train_rotate = train_rotate
+        self.train_reflection = train_reflection    
+        self.train_rotate_n_copies = train_rotate_n_copies
 
     def setup(self, stage: Optional[str] = None):
         """
@@ -130,7 +141,8 @@ class QM9Filtered(QM9):
             self._train_dataset = self.dataset.subset(self.train_idx)  # type: ignore
             self._val_dataset = self.dataset.subset(self.val_idx)  # type: ignore
             self._test_dataset = self.dataset.subset(self.test_idx)  # type: ignore
-
+        ## MORERED ADJUSTMENT
+        log.info(f"loaded {type(self.dataset)} with {len(self.dataset)} molecules")
         self._setup_transforms()
 
     def train_dataloader(self) -> AtomsLoader:
@@ -138,11 +150,129 @@ class QM9Filtered(QM9):
         get training dataloader
         """
         if self._train_dataloader is None:
+            log.info(f"instantion train dataloader with batch size {self.batch_size}")
             self._train_dataloader = AtomsLoader(
                 self.train_dataset,  # type: ignore
                 batch_size=self.batch_size,
                 num_workers=self.num_workers,
                 shuffle=self.shuffle_train,
                 pin_memory=self._pin_memory is not None and self._pin_memory,
+                collate_fn = self.train_collate_fn
             )
         return self._train_dataloader
+
+    def _get_random_rotations(self,n_samples, device, dtype: th.dtype | None = None) -> th.Tensor:
+        R = Rotation.random(
+            n_samples,
+        ).as_matrix()
+        dtype = th.get_default_dtype()
+        R = th.tensor(R, dtype=dtype)
+        return R.to(device)
+
+
+    def _get_random_reflections(
+        self,n_samples, device, reflection_share=0.5, eps=1e-9, dtype: th.dtype | None = None
+    ) -> th.Tensor:
+        dtype = th.get_default_dtype()
+        # get random normal vectors
+        normals = th.randn(n_samples, 3, dtype=dtype).to(device)  # (n_samples, 3)
+        normals = normals / (th.norm(normals, dim=1, keepdim=True) + eps)  # (n_samples, 3)
+
+        # get householder matrix
+        normals = normals.unsqueeze(2)
+        outer = th.matmul(normals, normals.transpose(1, 2))  # (n_samples, 3, 3)
+        identity = th.eye(3, dtype=normals.dtype, device=normals.device).unsqueeze(0)  # (1, 3, 3)
+        householder = identity.repeat(n_samples, 1, 1)  # (n_samples, 3, 3)
+        # selectively reflect
+        sample_mask = th.rand(n_samples) < reflection_share
+        householder[sample_mask] -= 2 * outer[sample_mask]
+        assert householder.dtype == dtype
+        return householder
+    
+    def train_collate_fn(self,batch):
+        """
+        Build batch from systems and properties & apply padding
+
+        Args:
+            examples (list):
+
+        Returns:
+            dict[str->torch.Tensor]: mini-batch of atomistic systems
+        """
+        elem = batch[0]
+        idx_keys = {structure.idx_i, structure.idx_j, structure.idx_i_triples}
+        # Atom triple indices must be treated separately
+        idx_triple_keys = {structure.idx_j_triples, structure.idx_k_triples}
+        ##MoreRed Adjustment
+        #randomly rotate adn reflect batch (by creating copies)
+        if self.train_rotate:
+            augmented_batch = []
+            augmented_batch.extend(batch)  # include original batch
+            for sample in batch:
+                positions = sample[structure.R]  # original positions
+                # Create n copies
+                for _ in range(self.train_rotate_n_copies):
+                    new_sample = {k: v.clone() for k, v in sample.items()}  # deep copy
+                    # Random rotation
+                    R = self._get_random_rotations(1, positions.device)  # returns (1,3,3)
+                    rotated_positions = torch.bmm(positions.unsqueeze(0), R).squeeze(0)
+                    new_sample[structure.R] = rotated_positions
+
+                    if self.train_reflection:
+                        H = self._get_random_reflections(1, positions.device, reflection_share=0.5)
+                        rotated_positions = torch.bmm(rotated_positions.unsqueeze(0), H).squeeze(0)
+                        new_sample[structure.R] = rotated_positions
+                    augmented_batch.append(new_sample)
+            batch = augmented_batch  # replace original batch with augmented batch 
+        
+        coll_batch = {}
+        for key in elem:
+            if (key not in idx_keys) and (key not in idx_triple_keys):
+                coll_batch[key] = torch.cat([d[key] for d in batch], 0)
+            elif key in idx_keys:
+                coll_batch[key + "_local"] = torch.cat([d[key] for d in batch], 0)
+
+        seg_m = torch.cumsum(coll_batch[structure.n_atoms], dim=0)
+        seg_m = torch.cat([torch.zeros((1,), dtype=seg_m.dtype), seg_m], dim=0)
+        idx_m = torch.repeat_interleave(
+            torch.arange(len(batch)), repeats=coll_batch[structure.n_atoms], dim=0
+        )
+        coll_batch[structure.idx_m] = idx_m
+
+        for key in idx_keys:
+            if key in elem.keys():
+                coll_batch[key] = torch.cat(
+                    [d[key] + off for d, off in zip(batch, seg_m)], 0
+                )
+
+        # Shift the indices for the atom triples
+        for key in idx_triple_keys:
+            if key in elem.keys():
+                indices = []
+                offset = 0
+                for idx, d in enumerate(batch):
+                    indices.append(d[key] + offset)
+                    offset += d[structure.idx_j].shape[0]
+                coll_batch[key] = torch.cat(indices, 0)
+
+        return coll_batch
+
+    def test():
+        pass
+        return None
+        #so QM9 Filtered inherits from QM9
+        #https://schnetpack.readthedocs.io/en/latest/_modules/datasets/qm9.html#QM9
+        #QM9 intherits from AtomsDtaModule
+        #in QM9 preparte_dataset it calls load_dataset(self.datapath,self.format) and there the len(dataset) is 133885
+        #https://schnetpack.readthedocs.io/en/latest/_modules/data/atoms.html#load_dataset
+        #load dataset returns an BaseAtomsData object (by calling ASEAtomsData)
+        #AseAtomsData inherits from BaseAtomsData
+
+        #AtomsDataModule(from which QM9 Inherits) https://schnetpack.readthedocs.io/en/latest/_modules/data/datamodule.html#AtomsDataModule
+        #AtomsDataModule inherits from LightningDataModule (official Pytorch Lighniting)
+
+
+
+        #We have intersting functions: AtomsDataModule getaomsrefs and 
+        #https://schnetpack.readthedocs.io/en/latest/_modules/data/loader.html#AtomsLoader
+

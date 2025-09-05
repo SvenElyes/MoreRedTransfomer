@@ -64,7 +64,6 @@ class DiffModelOutput(ModelOutput):
         """
         if self.loss_weight == 0 or self.loss_fn is None:
             return torch.tensor(0.0)
-
         # extract the extra arguments of the loss function if needed
         args_ = inspect.getfullargspec(self.loss_fn).args[2:]
         kwargs = {k: pred[k] for k in args_ if k in pred}
@@ -148,6 +147,13 @@ class DiffusionTask(AtomisticTask):
         Args:
             batch: input batch.
         """
+        # MoreRed ET adjustment 
+        #our model has no postprocessors, and its throwing errors here, when assignning child with list as it expecfts none.
+        #log.info(f"Postprocessors: {self.model.postprocessors} Type: {type(self.model.postprocessors)} is list true? {self.model.postprocessors is list} and len {len(self.model.postprocessors)}")
+        if isinstance(self.model.postprocessors,list) and len(self.model.postprocessors) == 0:
+            #log.warning("Model has no processors, skipping postprocessing step.")
+            return self.model(batch)
+
         tmp_postprocessors = self.model.postprocessors
         self.model.postprocessors = self.model.forced_postprocessors
         pred = self(batch)

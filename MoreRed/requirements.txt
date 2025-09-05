@@ -1,0 +1,6 @@
+numpy
+schnetpack==2.1.1
+tensorboard
+progressbar2
+torch>=2.7
+frozendict

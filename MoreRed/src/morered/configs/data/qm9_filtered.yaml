@@ -10,8 +10,8 @@ permute_indices: False
 num_train: 55000
 num_val: 10000
 num_test: 10000
-num_workers: 8
-remove_uncharacterized: True
+num_workers: 4
+remove_uncharacterized: False
 n_overfit_molecules: null
 distance_unit: Ang
 pin_memory: True
