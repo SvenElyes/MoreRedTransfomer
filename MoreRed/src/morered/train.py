@@ -111,6 +111,11 @@ def train(config: DictConfig):
     log.info(f"Instantiating datamodule <{config.data._target_}>")
     datamodule: LightningDataModule = hydra.utils.instantiate(config.data)
 
+
+    #MORERED Adjustment
+    log.info("Calculating max_atoms... Not implmented yet")
+    #max_atoms = hydra.utils.instantiate(config.globals.max_atoms,dataset=datamodule)
+
     # Init model
     log.info(f"Instantiating model <{config.model._target_}>")
     model = hydra.utils.instantiate(config.model)
