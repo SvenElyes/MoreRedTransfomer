@@ -26,7 +26,7 @@ This project explores the use of **non-equivariant backbone representations** in
 ## Things I did specifically
 - Mayor changes are to be seen in MoreRed/src/morered/model/heads_pe.py
 - MoreRed uses a single concetanted list with all molecules in the batch in that single list. It then uses a different list to keep track of which part of that list belonds to which molecule. The ET expects a padded mutltidimensional tensor. So i wrote code to convert these two into each other.
- - Adding the time as a parameter. I was not sure so i appeneded it a bit ugly()
+ - Adding the time as a parameter. I was not sure so i appeneded it a bit ugly
  ```
 #time is the same, its just broadcasted, so its safe to do this
             t0 = inputs[self.time_key][0]
@@ -34,13 +34,14 @@ This project explores the use of **non-equivariant backbone representations** in
             time = th.full((x.shape[0],x.shape[1],x.shape[2],12),t0, device=x.device, dtype=x.dtype)
             x = th.cat([x, time], dim=-1)
 ```
--included postprocess in the model, as we ripped it out of the schnetpack pipeline
--slight structure changes to fall in line with the Atomistic Task 
+- included postprocess in the model, as we ripped it out of the schnetpack pipeline
+- slight structure changes to fall in line with the Atomistic Task 
 
 ## TODO
 
 - Refactor code: move **data-related operations** from EdgeTransformer to a more appropriate location.(The reforming from long lsit to masked and padding and back).
--Include the JT Appraoch of MoreRed, where the EdgeTransfomer also predicts time. This should be very simple, as we already have the heads part given.
--adding Rotational Noise to the diffusion process in the hope of learning equivariance more.
--investigate long waiting time before start of training (possible JIT precompilation)
+- Include the JT Appraoch of MoreRed, where the EdgeTransfomer also predicts time. This should be very simple, as we already have the heads part given.
+
+- adding Rotational Noise to the diffusion process in the hope of learning equivariance more.
+- investigate long waiting time before start of training (possible JIT precompilation)
 
