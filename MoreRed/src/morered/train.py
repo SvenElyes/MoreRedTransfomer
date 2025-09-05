@@ -90,7 +90,6 @@ def train(config: DictConfig):
 
     if config.get("print_config"):
         print_config(config, resolve=False)
-
     if "matmul_precision" in config and config.matmul_precision is not None:
         log.info(f"Setting float32 matmul precision to <{config.matmul_precision}>")
         torch.set_float32_matmul_precision(config.matmul_precision)
