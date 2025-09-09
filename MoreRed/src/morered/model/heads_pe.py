@@ -83,6 +83,10 @@ class Property(Enum):
     n_atoms = "n_atoms"
     _meta = "_meta"
 
+    ##MORERED ADJUSTEMNT
+    atomic_numbers_padded = "_atomic_numbers_padded"
+    positions_padded="_positions_padded"
+
 
 class PropertyType(Enum):
     mol_wise = 1
@@ -343,6 +347,7 @@ class PairEncoder(nn.Module):
          shapes: [torch.Size([128]), torch.Size([128]), torch.Size([128]), torch.Size([1577]), torch.Size([1577, 3]), torch.Size([128, 3, 3]), torch.Size([384]), torch.Size([1577, 3]), torch.Size([1577, 3]), torch.Size([1577]), torch.Size([19014]), torch.Size([19014]), torch.Size([19014, 3]), torch.Size([1577]), torch.Size([19014]), torch.Size([19014]), torch.Size([19014, 3]), torch.Size([1577, 256]), torch.Size([1577, 3, 256])]
         """
 
+        log.info(f"Start Ecnoder input keys: {inputs.keys()} and shapes: {[inputs[k].shape for k in inputs.keys()]}")
         
         h, e, mask = self.embedding(inputs)
         x = self.composer((h, e, mask)) #inject node info into edge ?b,n,n,embed_dim
@@ -447,13 +452,13 @@ class PairEmbedding(nn.Module):
         self.directional_embed = FourierDirectionalEmbed(embd_dim, num_kernel=128)
 
     def forward(self, inputs) -> tuple[th.Tensor, th.Tensor, th.Tensor]:
-        #log.info(f"PairEmbedding input keys: {inputs.keys()} and shapes: {[inputs[k].shape for k in inputs.keys()]}")
-        #log.info(f"Props keys: {[Props.positions, Props.atomic_numbers, Props.mask, Props.multiplicity, Props.charge]}")
+        log.info(f"PairEmbedding input keys: {inputs.keys()} and shapes: {[inputs[k].shape for k in inputs.keys()]}")
+        log.info(f"Props keys: {[Props.positions, Props.atomic_numbers, Props.mask, Props.multiplicity, Props.charge]}")
 
         #MORERED ADJUSTMENT
 
         device = inputs["_atomic_numbers"].device
-
+        #TODO: Remove this and move to DataLoader
         #introduce a mask, which tells us which atoms are present in the graph
         bs = inputs["_n_atoms"].shape[0]
         max_atoms = inputs["_n_atoms"].max()
@@ -819,6 +824,7 @@ class NodeLevelRegressionHead(nn.Module):
         )
 
     def forward(self, h, inputs) -> th.Tensor:
+        #TODO: Think about how to make this cleaner
 
         #MoreRed adjustment
         #construct the map again, in the todo one should make it part of the input and remove all this nonsense from the forawrd 

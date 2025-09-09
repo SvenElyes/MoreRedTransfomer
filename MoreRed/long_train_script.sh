@@ -1,12 +1,15 @@
 #!/bin/bash
 #SBATCH --job-name=morered_train
-#SBATCH --partition=gpu-9m
+#SBATCH --partition=gpu-5h
+#SBATCH --constraint="80gb|40gb"
 #SBATCH --gpus-per-node=1
 #SBATCH --ntasks-per-node=2
 #SBATCH --output=logs/train_mdtrain-%j.out
 
 # 1. copy the squashed dataset to the nodes /tmp 
 cp /home/space/datasets-sqfs/QM9.sqfs /tmp/
+
+#  --constraint="80gb|40gb"
 
 # 2. bind the squashed dataset to your apptainer environment and run your script with apptainer
 #apptainer run -B /tmp/QM9.sqfs:/input-data:image-src=/ old_container.sif python -u src/scripts/mrdtrain experiment=my_vp_gauss_clean run.data_dir="/input-data/energy_U0"

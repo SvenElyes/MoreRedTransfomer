@@ -138,9 +138,23 @@ class QM9Filtered(QM9):
                 self._load_partitions()
 
             # partition dataset
+            log.info(f"Partitioning dataset with {len(self.dataset)} molecules and train dataset size {len(self.train_idx)}")
             self._train_dataset = self.dataset.subset(self.train_idx)  # type: ignore
             self._val_dataset = self.dataset.subset(self.val_idx)  # type: ignore
             self._test_dataset = self.dataset.subset(self.test_idx)  # type: ignore
+            log.info(f"Train dataset has {len(self._train_dataset)} molecules and is of type {type(self._train_dataset)}")
+            """
+            structure keys
+            [2025-09-09 15:57:01,623][morered.datasets.qm9_filtered][INFO] -
+              structure list schnetpack ['Final', 'R', 'R_strained', 'Rij', 'Rij_lr', 'Z',
+               '__annotations__', '__builtins__', '__cached__', '__doc__', '__file__', '__loader__', '__name__', '__package__',
+                '__spec__', 'cell', 'cell_strained', 'dipole_derivatives', 'dipole_moment', 'electric_field', 
+                'energy', 'forces', 'hessian', 'idx', 'idx_i', 'idx_i_lr', 'idx_i_triples', 'idx_j', 'idx_j_lr',
+                 'idx_j_triples', 'idx_k_triples', 'idx_m', 'lidx_i', 'lidx_j', 'magnetic_field', 'masses',
+                  'n_atoms', 'n_nbh', 'nuclear_magnetic_moments', 'nuclear_spin_coupling', 'offsets', 'offsets_lr',
+                   'partial_charges', 'pbc', 'polarizability', 'polarizability_derivatives', 'position', 
+                   'required_external_fields', 'seg_m', 'shielding', 'spin_multiplicity', 'strain', 'stress', 'total_charge']
+            """
         ## MORERED ADJUSTMENT
         log.info(f"loaded {type(self.dataset)} with {len(self.dataset)} molecules")
         self._setup_transforms()
@@ -254,6 +268,29 @@ class QM9Filtered(QM9):
                     indices.append(d[key] + offset)
                     offset += d[structure.idx_j].shape[0]
                 coll_batch[key] = torch.cat(indices, 0)
+
+        ##MORERED ADJUMENT
+
+        #generate batch that is properly padded and doesnt rely on idx list, so the EdgeTransfomer can work with it
+        device = coll_batch["_atomic_numbers"].device
+        bs = coll_batch[structure.n_atoms].shape[0]
+        max_atoms = coll_batch[structure.n_atoms].max()
+
+
+        mask = th.arange(max_atoms, device=device).unsqueeze(0) < coll_batch["_n_atoms"].unsqueeze(1)
+
+    
+        atomic_numbers_padded = th.zeros(bs, max_atoms, dtype=coll_batch["_atomic_numbers"].dtype, device=coll_batch["_atomic_numbers"].device)
+        positions_padded = th.zeros(bs, max_atoms, 3, dtype=coll_batch["_positions"].dtype, device=coll_batch["_positions"].device)
+        
+        for i in range(bs):
+            n = coll_batch[structure.n_atoms][i]
+            atomic_numbers_padded[i, :n] = coll_batch["_atomic_numbers"][coll_batch["_idx_m"] == i]
+            positions_padded[i, :n] = coll_batch[structure.R][coll_batch["_idx_m"] == i]
+
+        coll_batch["mask"] = mask
+        coll_batch["_atomic_numers_padded"] = atomic_numbers_padded
+        coll_batch["_positions_padded"] = positions_padded
 
         return coll_batch
 
