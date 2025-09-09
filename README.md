@@ -16,6 +16,8 @@ This project explores the use of **non-equivariant backbone representations** in
 - which one is charge
 'partial_charges', 'total_charge' or properties.Z
 - remove the force adjustmend of the transformer
+- move maybe the mask to general transform hehe :3
+- create alias file like Ole D.
 ## Projects Integrated
 
 1. **[MoreRed (Diffusion)](https://github.com/khaledkah/MoreRed)**  

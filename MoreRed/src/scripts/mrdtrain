@@ -16,6 +16,16 @@ print("sys.path:", sys.path)
 print("src_path exists:", os.path.exists(src_path))
 print("Contents:", os.listdir(src_path))
 
+# Check /input-data directory
+input_data_dir = "/input-data"
+print("\nChecking /input-data ...")
+if os.path.exists(input_data_dir):
+    print("input_data_dir exists:", True)
+    print("Contents of /input-data:", os.listdir(input_data_dir))
+else:
+    print("input_data_dir exists:", False)
+
+    
 # Import morered
 import morered.train as train
 
