@@ -328,8 +328,10 @@ class PairEncoder(nn.Module):
         forces_norm = th.norm(forces, dim=-1)
         mask = forces_norm < limit
         if mask.sum() < forces_norm.numel():
+            """
             out[Props.forces] = forces * mask.unsqueeze(-1)
-            log.warning(f"Post-processed {1 - (mask.sum() / mask.numel()):.2%} of forces with mask")
+            log.warning(f"Post-processed {1 - (mask.sum() / mask.numel()):.2%} of forces with mask")"""
+            log.info("The ET would have post processed the forces, in a context of predicting Noise, does it make sense?\n skipping if for now...")
         return out
 
     def _init_weights(self, module) -> None:
@@ -347,7 +349,7 @@ class PairEncoder(nn.Module):
          shapes: [torch.Size([128]), torch.Size([128]), torch.Size([128]), torch.Size([1577]), torch.Size([1577, 3]), torch.Size([128, 3, 3]), torch.Size([384]), torch.Size([1577, 3]), torch.Size([1577, 3]), torch.Size([1577]), torch.Size([19014]), torch.Size([19014]), torch.Size([19014, 3]), torch.Size([1577]), torch.Size([19014]), torch.Size([19014]), torch.Size([19014, 3]), torch.Size([1577, 256]), torch.Size([1577, 3, 256])]
         """
 
-        log.info(f"Start Ecnoder input keys: {inputs.keys()} and shapes: {[inputs[k].shape for k in inputs.keys()]}")
+        #log.info(f"Start Ecnoder input keys: {inputs.keys()} and shapes: {[inputs[k].shape for k in inputs.keys()]}")
         
         h, e, mask = self.embedding(inputs)
         x = self.composer((h, e, mask)) #inject node info into edge ?b,n,n,embed_dim
@@ -383,10 +385,12 @@ class PairEncoder(nn.Module):
         #         log.info(f"Forces shape: {out[Props.forces].shape if Props.forces in out else 'N/A'}")'
         #we have to flatten(remove the padding) the output again. 
         f = out[Props.forces]
+        #I think we have to do this at first, because our eps(true noise) is in this particualr shape. We could pad
+        #this as well and then we wouldnt need to do this?
         valid_forces = f[mask]
-        #log.info(f"Valid forces shape: {valid_forces.shape}")
+        #log.info(f"Valid forces shape: {valid_forces.shape} and eps shape {inputs['eps'].shape} and f shape {f.shape}")
         
-        #rudementary postrproess not in line with schnetpack strucutre.
+        #rudementary postrproess in line with schnetpack strucutre.
         
         inputs[self.output_key] = valid_forces
         for post in self.postprocessors:
@@ -452,38 +456,23 @@ class PairEmbedding(nn.Module):
         self.directional_embed = FourierDirectionalEmbed(embd_dim, num_kernel=128)
 
     def forward(self, inputs) -> tuple[th.Tensor, th.Tensor, th.Tensor]:
-        log.info(f"PairEmbedding input keys: {inputs.keys()} and shapes: {[inputs[k].shape for k in inputs.keys()]}")
-        log.info(f"Props keys: {[Props.positions, Props.atomic_numbers, Props.mask, Props.multiplicity, Props.charge]}")
+        #log.info(f"PairEmbedding input keys: {inputs.keys()} and shapes: {[inputs[k].shape for k in inputs.keys()]}")
+        #log.info(f"Props keys: {[Props.positions, Props.atomic_numbers, Props.mask, Props.multiplicity, Props.charge]}")
 
         #MORERED ADJUSTMENT
 
         device = inputs["_atomic_numbers"].device
-        #TODO: Remove this and move to DataLoader
-        #introduce a mask, which tells us which atoms are present in the graph
-        bs = inputs["_n_atoms"].shape[0]
-        max_atoms = inputs["_n_atoms"].max()
-        
-        #arange(max_atoms).unsqueeze(0) -> (1,max_atoms) and inputs ["_n_atoms"].unsqueeze(1) -> (bs,1)
-
-        mask = th.arange(max_atoms, device=device).unsqueeze(0) < inputs["_n_atoms"].unsqueeze(1)
+        mask = inputs["mask"]
     
         #multiplicity and charge a re both scalar( 1 dim, look up in the frozendict)
         multiplicity = th.ones_like(inputs["_n_atoms"],device=device).unsqueeze(-1)
         charge = th.zeros_like(inputs["_n_atoms"],device=device).unsqueeze(-1) #reference to simple_md where they did the same
 
         #reshape positions and atomic numbers to allign with the padded approach.
-        atomic_numbers_padded = th.zeros(bs, max_atoms, dtype=inputs["_atomic_numbers"].dtype, device=inputs["_atomic_numbers"].device)
-        positions_padded = th.zeros(bs, max_atoms, 3, dtype=inputs["_positions"].dtype, device=inputs["_positions"].device)
+        atomic_numbers_padded = inputs["_atomic_numbers_padded"]
+        positions_padded = inputs["_positions_padded"]
 
-
-        #log.info(f"Postionspadded key f{Props.positions} vaklue: {Props.positions.value} dtype: {type(Props.positions.value)} and type {type(Props.positions)}")
-        #log.info(f"Atomic nujmbers Props key f{Props.atomic_numbers} vaklue: {Props.atomic_numbers.value} dtype: {type(Props.atomic_numbers.value)} and type {type(Props.atomic_numbers)}")
-        #TODO vectorize this please hahahh
-        for i in range(bs):
-            n = inputs["_n_atoms"][i]
-            atomic_numbers_padded[i, :n] = inputs[Props.atomic_numbers.value][inputs["_idx_m"] == i]
-            positions_padded[i, :n] = inputs[Props.positions.value][inputs["_idx_m"] == i]
-
+        
         positions, atomic_numbers, mask, multiplicity, charge = (
             positions_padded,
             atomic_numbers_padded,
@@ -499,8 +488,6 @@ class PairEmbedding(nn.Module):
             "charge": charge,
         }
 
-        #for name, tensor in tensors.items():
-            #log.info(f"{name:<15} | shape: {tuple(tensor.shape)} | dtype: {tensor.dtype}")
         # add graph level token at the beginning of the sequence/batch. This one is used to encode the graph level information
         if self.cls_token:
             positions, atomic_numbers, mask = add_graph_level_token(positions, atomic_numbers, mask)
@@ -825,19 +812,7 @@ class NodeLevelRegressionHead(nn.Module):
 
     def forward(self, h, inputs) -> th.Tensor:
         #TODO: Think about how to make this cleaner
-
-        #MoreRed adjustment
-        #construct the map again, in the todo one should make it part of the input and remove all this nonsense from the forawrd 
-        #mask = inputs[Props.mask]
-        #MORERED ADJUSTMENT
-        #introduce a mask, which tells us which atoms are present in the graph
-        bs = inputs["_n_atoms"].shape[0]
-        max_atoms = inputs["_n_atoms"].max()
-        
-        #arange(max_atoms).unsqueeze(0) -> (1,max_atoms) and inputs ["_n_atoms"].unsqueeze(1) -> (bs,1)
-        device = inputs["_n_atoms"].device
-
-        mask = th.arange(max_atoms,device=device).unsqueeze(0) < inputs["_n_atoms"].unsqueeze(1)
+        mask = inputs["mask"]
 
         h = h.clone()  # (b,n,e)
         h = self.final_ln_node(h)  # (b,n,e)

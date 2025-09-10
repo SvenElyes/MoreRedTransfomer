@@ -5,12 +5,23 @@ This project explores the use of **non-equivariant backbone representations** in
 ## Refactor Goals :suspect: :trollface:
 
 - Make Qm7 work (dont forget to bind correctly)
+   -using QM7x from quantum max datasets doesnt work bc its missing some key dcit metadata json file  
+   -usign QM7x.sqfs from shared_datasets i get 
+      svenelzes@hydra:~/MoreRedTransfomer/MoreRed$ file /home/space/datasets-sqfs/QM7-X.sqfs
+      /home/space/datasets-sqfs/QM7-X.sqfs: data
+      which means its not correc squashfs(accrdoing to chatgpt)
+      FATAL ERROR: Can't find a valid SQUASHFS superblock on QM7-X.sqfs
+
 - Move the Mask thing into Dataloader. :white_check_mark:
-- See if the loss works? Shoudl though, the 0 dont change a thing?
+   -still need to remove the part from the model that does it now lol
+   - vectorizing the loading of data into the padded arrays? Is it possible? Maybe move a bit ahead
+
 - Check if the random transformation and center really works
 - investigate the numbers of train samples from the MoreRed paper? Something is sus
+   -130000 samples in QM9, 55000 in datatraining (with batchsize 4) we get 13500 steps in one epoch. Seems fine
 - properties.Z nuclear charge from schnetpack wiki 
 - Investigate if we need to valid_forces = f[mask] even, or the output is padded fine?
+   -seems fine to do it like this. Returning padded output would mean we would need 
 - Extend the namespace schnetspace.structure with our own custom, combining both the heads_pe namespaces in there.(with frozendict)
 - found atleast spin multiplicty 
 - which one is charge
@@ -18,6 +29,9 @@ This project explores the use of **non-equivariant backbone representations** in
 - remove the force adjustmend of the transformer
 - move maybe the mask to general transform hehe :3
 - create alias file like Ole D.
+- investigate if we can extend batch size and what and how?
+- do a trainrun of normal circumstances to have proper control value :suspect:
+
 ## Projects Integrated
 
 1. **[MoreRed (Diffusion)](https://github.com/khaledkah/MoreRed)**  

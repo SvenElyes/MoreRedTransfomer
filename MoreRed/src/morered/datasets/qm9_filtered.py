@@ -289,7 +289,7 @@ class QM9Filtered(QM9):
             positions_padded[i, :n] = coll_batch[structure.R][coll_batch["_idx_m"] == i]
 
         coll_batch["mask"] = mask
-        coll_batch["_atomic_numers_padded"] = atomic_numbers_padded
+        coll_batch["_atomic_numbers_padded"] = atomic_numbers_padded
         coll_batch["_positions_padded"] = positions_padded
 
         return coll_batch
