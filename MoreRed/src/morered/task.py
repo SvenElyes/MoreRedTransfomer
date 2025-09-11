@@ -6,7 +6,7 @@ import torch
 from schnetpack.task import AtomisticTask, ModelOutput, UnsupervisedModelOutput
 from torch import nn
 from torchmetrics import Metric
-
+from schnetpack import properties
 log = logging.getLogger(__name__)
 
 
@@ -240,8 +240,43 @@ class DiffusionTask(AtomisticTask):
 
         # calculate the loss
         loss = self.loss_fn(pred, targets)
-
+      
         # log loss and metrics
+        show_batch_center_log = False
+        if 'eps_pred' in pred and show_batch_center_log == True:
+            # Compute the batch-wise center-of-mass vector
+            # eps_pred assumed shape: [total_atoms_in_batch, dim] or [total_atoms_in_batch, >=dim]
+            eps = pred['eps_pred']
+            
+            # batch info
+            idx_m = pred[properties.idx_m]  # which batch each atom belongs to
+            n_atoms = pred[properties.n_atoms]  # number of atoms per molecule/system
+
+            # Compute the batch-wise mean (center of mass) for each batch
+            # First, we can use a scatter_mean over idx_m
+            device = eps.device
+            dim = 3  # your BatchSubtractCenterOfMass dim
+
+            # Take only first 'dim' dimensions
+            eps_xyz = eps[:, :dim]
+
+            # Number of batches
+            n_batches = idx_m.max().item() + 1
+
+            # Allocate tensor for batch COM
+            com = torch.zeros((n_batches, dim), device=device)
+
+            # Sum positions for each batch
+            com = com.index_add(0, idx_m, eps_xyz)
+            # Divide by number of atoms per batch to get mean
+            # Convert n_atoms to float and match shape
+            n_atoms_float = n_atoms.float().unsqueeze(-1)  # shape [n_batches, 1]
+            com = com / n_atoms_float
+
+            log.info(f"Batch-wise center-of-mass of eps_pred after BScom: {com}")
+        else:
+            log.warning("eps_pred not in pred, cannot compute center-of-mass")
+
         self.log(
             f"{subset}_loss",
             loss,
