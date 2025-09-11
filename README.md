@@ -57,6 +57,7 @@ This project explores the use of **non-equivariant backbone representations** in
       /home/space/datasets-sqfs/QM7-X.sqfs: data
       which means its not correc squashfs(accrdoing to chatgpt)
       FATAL ERROR: Can't find a valid SQUASHFS superblock on QM7-X.sqfs
+   -redownlaoded and parsed qm7 and will move it into /home/space/datasets-sqfs/(TU BERLIN HYDRA HPC) under QM7-X_svenelzes.sqfs 
   
 - Check if the random transformation and center really works
    - center does work :white_check_mark:

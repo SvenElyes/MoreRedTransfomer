@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=morered_train
-#SBATCH --partition=gpu-9m
+#SBATCH --partition=gpu-test
 #SBATCH --gpus-per-node=1
 #SBATCH --ntasks-per-node=2
 #SBATCH --output=logs/train_mdtrain-%j.out
