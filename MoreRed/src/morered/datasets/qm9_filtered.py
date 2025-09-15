@@ -158,13 +158,13 @@ class QM9Filtered(QM9):
         ## MORERED ADJUSTMENT
         log.info(f"loaded {type(self.dataset)} with {len(self.dataset)} molecules")
         self._setup_transforms()
-
+    #TODO some of the sutff(Like putting the mask in the batch) might be solvavle in a way that doesnt require 3 different functions: 
     def train_dataloader(self) -> AtomsLoader:
         """
         get training dataloader
         """
         if self._train_dataloader is None:
-            log.info(f"instantion train dataloader with batch size {self.batch_size}")
+            log.info(f"instantion train dataloader with orginal batch size {self.batch_size} To be augmented")
             self._train_dataloader = AtomsLoader(
                 self.train_dataset,  # type: ignore
                 batch_size=self.batch_size,
@@ -174,6 +174,30 @@ class QM9Filtered(QM9):
                 collate_fn = self.train_collate_fn
             )
         return self._train_dataloader
+
+    def val_dataloader(self) -> AtomsLoader:
+        if self._val_dataloader is None:
+            self._val_dataloader = AtomsLoader(
+                self.val_dataset,
+                batch_size=self.batch_size,
+                num_workers=self.num_workers,
+                pin_memory=self._pin_memory is not None and self._pin_memory,
+                collate_fn= self.val_test_collate_fn
+
+            )
+        return self._val_dataloader
+
+    def test_dataloader(self) -> AtomsLoader:
+        log.info(f"in the datadloader for test")
+        if self._test_dataloader is None:
+            self._test_dataloader = AtomsLoader(
+                self.test_dataset,
+                batch_size=self.batch_size,
+                num_workers=self.num_workers,
+                pin_memory=self._pin_memory is not None and self._pin_memory,
+                collate_fn= self.val_test_collate_fn
+            )
+        return self._test_dataloader
 
     def _get_random_rotations(self,n_samples, device, dtype: th.dtype | None = None) -> th.Tensor:
         R = Rotation.random(
@@ -293,6 +317,73 @@ class QM9Filtered(QM9):
         coll_batch["_positions_padded"] = positions_padded
 
         return coll_batch
+    
+    def val_test_collate_fn(self,batch):
+        """
+        This is the same as train_ but we dont flip and rotate.
+        """
+
+        elem = batch[0]
+        idx_keys = {structure.idx_i, structure.idx_j, structure.idx_i_triples}
+        # Atom triple indices must be treated separately
+        idx_triple_keys = {structure.idx_j_triples, structure.idx_k_triples}
+
+        coll_batch = {}
+        for key in elem:
+            if (key not in idx_keys) and (key not in idx_triple_keys):
+                coll_batch[key] = torch.cat([d[key] for d in batch], 0)
+            elif key in idx_keys:
+                coll_batch[key + "_local"] = torch.cat([d[key] for d in batch], 0)
+
+        seg_m = torch.cumsum(coll_batch[structure.n_atoms], dim=0)
+        seg_m = torch.cat([torch.zeros((1,), dtype=seg_m.dtype), seg_m], dim=0)
+        idx_m = torch.repeat_interleave(
+            torch.arange(len(batch)), repeats=coll_batch[structure.n_atoms], dim=0
+        )
+        coll_batch[structure.idx_m] = idx_m
+
+        for key in idx_keys:
+            if key in elem.keys():
+                coll_batch[key] = torch.cat(
+                    [d[key] + off for d, off in zip(batch, seg_m)], 0
+                )
+
+        # Shift the indices for the atom triples
+        for key in idx_triple_keys:
+            if key in elem.keys():
+                indices = []
+                offset = 0
+                for idx, d in enumerate(batch):
+                    indices.append(d[key] + offset)
+                    offset += d[structure.idx_j].shape[0]
+                coll_batch[key] = torch.cat(indices, 0)
+
+        ##MORERED ADJUMENT
+
+        #generate batch that is properly padded and doesnt rely on idx list, so the EdgeTransfomer can work with it
+        device = coll_batch["_atomic_numbers"].device
+        bs = coll_batch[structure.n_atoms].shape[0]
+        max_atoms = coll_batch[structure.n_atoms].max()
+
+
+        mask = th.arange(max_atoms, device=device).unsqueeze(0) < coll_batch["_n_atoms"].unsqueeze(1)
+
+    
+        atomic_numbers_padded = th.zeros(bs, max_atoms, dtype=coll_batch["_atomic_numbers"].dtype, device=coll_batch["_atomic_numbers"].device)
+        positions_padded = th.zeros(bs, max_atoms, 3, dtype=coll_batch["_positions"].dtype, device=coll_batch["_positions"].device)
+        
+        for i in range(bs):
+            n = coll_batch[structure.n_atoms][i]
+            atomic_numbers_padded[i, :n] = coll_batch["_atomic_numbers"][coll_batch["_idx_m"] == i]
+            positions_padded[i, :n] = coll_batch[structure.R][coll_batch["_idx_m"] == i]
+
+        coll_batch["mask"] = mask
+        coll_batch["_atomic_numbers_padded"] = atomic_numbers_padded
+        coll_batch["_positions_padded"] = positions_padded
+
+        return coll_batch
+
+
 
     def test():
         pass
