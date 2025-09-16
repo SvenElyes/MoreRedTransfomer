@@ -1,9 +1,9 @@
 #!/bin/bash
 #SBATCH --job-name=morered_train
-#SBATCH --partition=gpu-test
+#SBATCH --partition=gpu-2h
 #SBATCH --gpus-per-node=1
 #SBATCH --ntasks-per-node=2
-#SBATCH --output=logs/train_mdtrain-%j.out
+#SBATCH --output=logs/MDET/train_mdtrain-%j.out
 
 # 1. copy the squashed dataset to the nodes /tmp 
 cp /home/space/datasets-sqfs/QM9.sqfs /tmp/

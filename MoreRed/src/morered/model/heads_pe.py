@@ -86,6 +86,7 @@ class Property(Enum):
     ##MORERED ADJUSTEMNT
     atomic_numbers_padded = "_atomic_numbers_padded"
     positions_padded="_positions_padded"
+    time = "time"
 
 
 class PropertyType(Enum):
@@ -118,6 +119,7 @@ property_dims = frozendict(
         Property.i_idx_local: 1,
         Property.j_idx_local: 1,
         Property.n_atoms: 1,
+        Property.time: 1,
     }
 )
 
@@ -144,6 +146,7 @@ property_dtype_dict = frozendict(
         Property.i_idx_local: th.int64,
         Property.j_idx_local: th.int,
         Property.n_atoms: th.int64,
+        Property.time: th.int64
     }
 )
 
@@ -179,6 +182,7 @@ property_type = frozendict(
         Property.energy_atomref: PropertyType.mol_wise,
         Property.i_idx_local: PropertyType.edge_wise,
         Property.j_idx_local: PropertyType.edge_wise,
+        Property.time: PropertyType.mol_wise,
     }
 )
 
@@ -216,18 +220,19 @@ class PairEncoder(nn.Module):
         #added for morered compability
         include_time: bool = False,
         output_key: str = "eps_pred",
-        time_head: Optional[nn.Module] = None,
-        time_key: Optional[str] = None,
+        time_head: Optional[bool]= False, #true if JT(ET should also predict time.)
+        time_key: Optional[str] = None, #basic time_key
         detach_time_head: bool = False,
-        
+        time_output_key: Optional[str]= "t_pred", #time key for pred(in JT case)
         do_postprocessing: bool = True,
         do_preprocessing: bool = True,
 
     ) -> None:
         super().__init__()
         #MORERED ADJUSTMENT as schnetpack Task needs required derivatives
-        self.required_derivatives = ["forces"]
+        self.required_derivatives = ["eps_pred", "t_pred"] if include_time else ["eps_pred"]
         self.include_time = include_time
+        self.time_head = time_head
         self.time_key = time_key 
         self.embedding = PairEmbedding(embd_dim, num_3d_kernels, cls_token, use_electronic_embeddings)
         self.composer = Composer(embd_dim)
@@ -251,11 +256,12 @@ class PairEncoder(nn.Module):
         )
         
         target_heads = [Props[t] for t in target_heads]
+        assert self.time_head is True and Props["time"] in target_heads
         self.heads = nn.ModuleDict(
             {
                 str(target): NodeLevelRegressionHead(
                     target,
-                    embd_dim=embd_dim,
+                    embd_dim=embd_dim + 1 if target == Props.forces else embd_dim,#Props.time needs the normal emd_dim?
                     cls_token=cls_token,
                     activation=activation,
                     head_dropout=head_dropout,
@@ -266,39 +272,7 @@ class PairEncoder(nn.Module):
         )
         if Props.dipole in self.heads and compose_dipole_from_charges:
             self.heads["dipole"].set_compose_from_charges(True)
-        
-        if self.include_time:
-            self.layers = nn.ModuleList(
-            [
-                EdgeTransformerLayer(
-                    embd_dim+12,
-                    num_heads,
-                    ffn_dropout,
-                    ffn_multiplier,
-                    attention_dropout,
-                    activation,
-                    norm,
-                    norm_first,
-                )
-                for _ in range(n_layers)
-            ]
-        )
-            self.decomposer = self.decomposer_class(embd_dim+12)
-            self.heads = nn.ModuleDict(
-            {
-                str(target): NodeLevelRegressionHead(
-                    target,
-                    embd_dim=embd_dim+12,
-                    cls_token=cls_token,
-                    activation=activation,
-                    head_dropout=head_dropout,
-                    project_down=head_project_down,
-                )
-                for target in target_heads
-            }
-        )
-
-        
+        #adjust the dim        
         ##MORERED ADJUSTMENT
         #postprocessing in schnetpack is done using a nn.modulelist, where each postprocessing is done as a nn.module
 
@@ -306,7 +280,7 @@ class PairEncoder(nn.Module):
         transform_model = BatchSubtractCenterOfMass(name=output_key, dim=3)
         self.postprocessors = nn.ModuleList([transform_model])
         self.output_key = output_key
-
+        self.time_output_key = time_output_key
         self.do_preprocessing = do_preprocessing
         rotatation_model = None
         self.preprocessors = nn.ModuleList([rotatation_model])
@@ -349,7 +323,6 @@ class PairEncoder(nn.Module):
          shapes: [torch.Size([128]), torch.Size([128]), torch.Size([128]), torch.Size([1577]), torch.Size([1577, 3]), torch.Size([128, 3, 3]), torch.Size([384]), torch.Size([1577, 3]), torch.Size([1577, 3]), torch.Size([1577]), torch.Size([19014]), torch.Size([19014]), torch.Size([19014, 3]), torch.Size([1577]), torch.Size([19014]), torch.Size([19014]), torch.Size([19014, 3]), torch.Size([1577, 256]), torch.Size([1577, 3, 256])]
         """
 
-        #log.info(f"Start Ecnoder input keys: {inputs.keys()} and shapes: {[inputs[k].shape for k in inputs.keys()]}")
         
         h, e, mask = self.embedding(inputs)
         x = self.composer((h, e, mask)) #inject node info into edge ?b,n,n,embed_dim
@@ -359,22 +332,48 @@ class PairEncoder(nn.Module):
 
         ###MORERED ADJUSTMENT
         #append time to input
-        if self.include_time:
-
-            #time is the same, its just broadcasted, so its safe to do this
-            t0 = inputs[self.time_key][0]
-            #append it with 12, so it maches num_heads in transformer layer
-            time = th.full((x.shape[0],x.shape[1],x.shape[2],12),t0, device=x.device, dtype=x.dtype)
-            x = th.cat([x, time], dim=-1)
+        
 
             
         for layer in self.layers:
             x = layer(x, x_mask)
 
-        h = self.decomposer(x)
-        out = {Props[k]: head(h, inputs) for k, head in self.heads.items()}
+        h = self.decomposer(x) # Example:[12, 21, 192]) so Number_m,max_atoms,embed_dim
+
+        out = {}
+
+        #if we are in Joint context, we predict the time. 
+        if "time" in self.heads:
+            #also needed to be in the output like this, so we can take loss.
+            t0 = self.heads["time"](h, inputs)
+            t0 = t0.unsqueeze(1) #need to broadcast so loss can be calculated later
+            t0 = t0.expand(-1,h.shape[1],-1)
+            out[self.time_output_key] = t0
+            time = out[self.time_output_key]
+            
+
+        if self.include_time:        
+            #time is the same, its just broadcasted, so its safe to do this
+            if "time" not in self.heads:
+
+                t0 = inputs[self.time_key][0]
+
+                # we have batch,max_atoms,embed_dim and want batch,max_atoms,embed_dim+1
+                time = th.full((x.shape[0],x.shape[1],1),t0, device=x.device, dtype=x.dtype)
+
+            h = th.cat([h, time], dim=-1)
+
+
 
         
+        #TODO: Maybe clean up with the "time" str, maybe equal better to Props 
+        for k, head in self.heads.items():
+            if k != "time":
+                out[Props[k]] = head(h, inputs)
+
+        #out = {Props[k]: head(h, inputs) for k, head in self.heads.items()}
+
+        #matching output of network with global output key defined in hydraYaml
         out["embd"] = h
         out = self.post_process(out)
         ##MORERED ADJUSTMENT
@@ -385,18 +384,27 @@ class PairEncoder(nn.Module):
         #         log.info(f"Forces shape: {out[Props.forces].shape if Props.forces in out else 'N/A'}")'
         #we have to flatten(remove the padding) the output again. 
         f = out[Props.forces]
+        t = out[self.time_output_key] if self.include_time else None
+
         #I think we have to do this at first, because our eps(true noise) is in this particualr shape. We could pad
         #this as well and then we wouldnt need to do this?
         valid_forces = f[mask]
+
+
+        valid_time = t[mask] if self.include_time else None
+        #valid time is in shape n_atoms,1 but we need n_atoms
+        valid_time = valid_time.squeeze(-1) if self.include_time else None
+
         #log.info(f"Valid forces shape: {valid_forces.shape} and eps shape {inputs['eps'].shape} and f shape {f.shape}")
         
         #rudementary postrproess in line with schnetpack strucutre.
         
         inputs[self.output_key] = valid_forces
+        inputs[self.time_output_key] = valid_time
         for post in self.postprocessors:
-            valid_forces= post(inputs)
-
-        #predict time  
+            #happens inplace
+            post(inputs)
+       
         return inputs
 
 
@@ -603,7 +611,7 @@ class FFN(nn.Module):
         self.embed_dim = embed_dim
         self.dropout = dropout
 
-    @th.compile
+    #@th.compile
     def forward(self, x_prior, x) -> th.Tensor:
         x = self.dropout_aggregate(x)
         x = x_prior + x
@@ -674,7 +682,7 @@ class FastEdgeAttention(nn.Module):
         self.olin = nn.Linear(embed_dim, embed_dim, bias=False)
         self.dropout = nn.Dropout(p=dropout)
 
-    @th.compile
+    #@th.compile
     def forward(self, query, key, value, mask=None) -> th.Tensor:
         num_batches = query.size(0)
         num_nodes_q = query.size(1)
@@ -811,9 +819,8 @@ class NodeLevelRegressionHead(nn.Module):
         )
 
     def forward(self, h, inputs) -> th.Tensor:
-        #TODO: Think about how to make this cleaner
+        
         mask = inputs["mask"]
-
         h = h.clone()  # (b,n,e)
         h = self.final_ln_node(h)  # (b,n,e)
         mask = mask.to(self.dtype).unsqueeze(-1)

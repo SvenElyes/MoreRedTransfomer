@@ -18,6 +18,8 @@ from pytorch_lightning import Callback, LightningDataModule, Trainer, seed_every
 from pytorch_lightning.loggers.logger import Logger
 from schnetpack.utils import str2class
 from schnetpack.utils.script import log_hyperparameters, print_config
+from pytorch_lightning.profilers import AdvancedProfiler, PyTorchProfiler, SimpleProfiler
+
 
 log = logging.getLogger(__name__)
 
@@ -109,11 +111,19 @@ def train(config: DictConfig):
     # Init Lightning datamodule
     log.info(f"Instantiating datamodule <{config.data._target_}>")
     datamodule: LightningDataModule = hydra.utils.instantiate(config.data)
+    
+    
+    datamodule.prepare_data()
+    datamodule.setup()
+    test_loader = datamodule.test_dataloader()
+    batch = next(iter(test_loader))
+    log.info(f" keys of the batch: {batch.keys()}")
 
 
     # Init model
     log.info(f"Instantiating model <{config.model._target_}>")
     model = hydra.utils.instantiate(config.model)
+
 
     # Init LightningModule
     log.info(f"Instantiating task <{config.task._target_}>")
@@ -147,13 +157,19 @@ def train(config: DictConfig):
 
     # Init Lightning trainer
     log.info(f"Instantiating trainer <{config.trainer._target_}>")
+    
+    profiler = AdvancedProfiler(dirpath="/home/svenelzes/MoreRedTransfomer/MoreRed/profiler", filename="profiler")
     trainer: Trainer = hydra.utils.instantiate(
         config.trainer,
         callbacks=callbacks,
         logger=logger,
+        profiler= profiler,
         default_root_dir=os.path.join(config.run.id),
         _convert_="partial",
     )
+    log.info(f"run id {config.run.id}")
+    log.info(f"Trainer profiler: {trainer.profiler}")
+
 
     log.info("Logging hyperparameters.")
     log_hyperparameters(config=config, model=task, trainer=trainer)
@@ -161,6 +177,15 @@ def train(config: DictConfig):
     # Train the model
     log.info("Starting training.")
     trainer.fit(model=task, datamodule=datamodule, ckpt_path=config.run.ckpt_path)
+
+    """Traceback (most recent call last):
+        File "/home/svenelzes/MoreRedTransfomer/MoreRed/src/morered/train.py", line 181, in train
+            for evt in profiler.profile:
+        TypeError: 'method' object is not iterable
+
+            for evt in profiler.profile:
+                log.info(f"{evt.key}: {evt.cpu_time:.3f} ms, {evt.cuda_time:.3f} ms")
+    """
 
     # Evaluate model on test set after training
     log.info("Starting testing.")

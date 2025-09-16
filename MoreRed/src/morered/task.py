@@ -231,7 +231,6 @@ class DiffusionTask(AtomisticTask):
             targets["considered_atoms"] = batch["considered_atoms"]
         except Exception:
             pass
-
         # predict output quantity
         pred = self.predict_without_postprocessing(batch)
 
@@ -275,8 +274,10 @@ class DiffusionTask(AtomisticTask):
 
             log.info(f"Batch-wise center-of-mass of eps_pred after BScom: {com}")
         else:
-            log.warning("eps_pred not in pred, cannot compute center-of-mass")
-
+            if show_batch_center_log:
+                log.warning("eps_pred not in pred, cannot compute center-of-mass")
+            else:
+                pass
         self.log(
             f"{subset}_loss",
             loss,

@@ -1,6 +1,6 @@
 from abc import abstractmethod
 from typing import Dict, List, Optional, Tuple, Union
-
+import logging
 import torch
 from schnetpack import properties
 from torch import nn
@@ -11,6 +11,8 @@ from morered.sampling import Sampler
 from morered.utils import compute_neighbors, scatter_mean
 
 __all__ = ["MoreRed", "MoreRedJT", "MoreRedITP", "MoreRedAS"]
+
+logger = logging.getLogger(__name__)
 
 
 class MoreRed(Sampler):

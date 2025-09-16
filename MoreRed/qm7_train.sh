@@ -3,7 +3,7 @@
 #SBATCH --partition=cpu-5h
 #SBATCH --gpus-per-node=0
 #SBATCH --ntasks-per-node=2
-#SBATCH --output=logs/train_mdtrain_qm7-%j.out
+#SBATCH --output=logs/CLEAN_QM7/train_mdtrain_qm7-%j.out
 
 # 1. copy qm7.db to  /tmp 
 

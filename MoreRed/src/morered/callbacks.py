@@ -134,6 +134,7 @@ class SamplerCallback(Callback):
         self.t = t
         self.max_steps = max_steps
         self.sample_prior = sample_prior
+        logging.info(f"sample prior {sample_prior}")
         self.name = name
         self.store_path = store_path
         self.every_n_batchs = every_n_batchs
@@ -157,13 +158,17 @@ class SamplerCallback(Callback):
             batch: input batch to be used for sampling/denoising.
         """
         # update the sampling model
+        logging.info(f"batch keys are {batch.keys()}")
         self.sampler.update_model(model)
 
         # sample from the prior
         if self.sample_prior:
-            x_t = self.sampler.sample_prior(batch, self.t)
-            batch.update(x_t)
 
+            x_t = self.sampler.sample_prior(batch, self.t)
+            logging.info(f"sampled prior with keys {x_t.keys()}")
+            batch.update(x_t)
+            logging.info(f"updated batch with keys {batch.keys()}")
+        logging.info(f"sampling with t {self.t}")
         # sample / denoise
         samples, num_steps, hist = self.sampler(
             batch, t=self.t, max_steps=self.max_steps
@@ -340,4 +345,5 @@ class SamplerCallback(Callback):
         """
         Overwrites ``on_test_batch_end`` hook from ``Callback``.
         """
+        logging.info(f"on test batch end with {batch.keys()}")
         self._step(pl_module, batch, test=True)

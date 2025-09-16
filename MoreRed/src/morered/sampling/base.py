@@ -170,6 +170,35 @@ class Sampler:
         # collate batch in a dict of tensors in SchNetPack format
         batch = _atoms_collate_fn(batch)
 
+
+
+        ##MoreRed Adjustmet. 
+        #the way its done here, we dont have our mask anymore >:3
+        # we have to do that shit again..§
+
+        
+        #generate batch that is properly padded and doesnt rely on idx list, so the EdgeTransfomer can work with it
+        logger.info(f"again abtch keys {batch.keys} ")
+        device = batch["_atomic_numbers"].device
+        bs = batch[structure.n_atoms].shape[0]
+        max_atoms = batch[structure.n_atoms].max()
+
+
+        mask = th.arange(max_atoms, device=device).unsqueeze(0) < batch["_n_atoms"].unsqueeze(1)
+
+    
+        atomic_numbers_padded = th.zeros(bs, max_atoms, dtype=batch["_atomic_numbers"].dtype, device=batch["_atomic_numbers"].device)
+        positions_padded = th.zeros(bs, max_atoms, 3, dtype=batch["_positions"].dtype, device=batch["_positions"].device)
+        
+        for i in range(bs):
+            n = batch[structure.n_atoms][i]
+            atomic_numbers_padded[i, :n] = batch["_atomic_numbers"][batch["_idx_m"] == i]
+            positions_padded[i, :n] = batch[structure.R][batch["_idx_m"] == i]
+
+        batch["mask"] = mask
+        batch["_atomic_numbers_padded"] = atomic_numbers_padded
+        batch["_positions_padded"] = positions_padded
+
         # Move input batch to device
         batch = {p: batch[p].to(self.device) for p in batch}
 
@@ -218,7 +247,9 @@ class Sampler:
             )
 
         # prior for t < T: diffuse using p(x_t | x_0)
+        logging.info(f"sample prior t is {t} and input keys are {inputs.keys()} and x_0 shape {x_0.shape}")
         if t is not None:
+            log.info(f"inside the t")
             if isinstance(t, int):
                 t = torch.tensor(t, device=self.device)
             elif not isinstance(t, torch.Tensor):
@@ -242,7 +273,31 @@ class Sampler:
                 inputs[properties.R], inputs[properties.idx_m], **kwargs
             )
 
+
         outputs = {properties.R: x_t.to(device=self.device)}
+        #MOreRed adjustment. We have to return a mask as well.
+        logging.info(f"sampled prior with keys {outputs.keys()} and x_t shape {x_t.shape}")
+        """
+        device = outputs["_atomic_numbers"].device
+        bs = outputs[structure.n_atoms].shape[0]
+        max_atoms = outputs[structure.n_atoms].max()
+
+
+        mask = th.arange(max_atoms, device=device).unsqueeze(0) < outputs["_n_atoms"].unsqueeze(1)
+
+    
+        atomic_numbers_padded = th.zeros(bs, max_atoms, dtype=outputs["_atomic_numbers"].dtype, device=outputs["_atomic_numbers"].device)
+        positions_padded = th.zeros(bs, max_atoms, 3, dtype=outputs["_positions"].dtype, device=outputs["_positions"].device)
+        
+        for i in range(bs):
+            n = outputs[structure.n_atoms][i]
+            atomic_numbers_padded[i, :n] = outputs["_atomic_numbers"][outputs["_idx_m"] == i]
+            positions_padded[i, :n] = outputs[structure.R][outputs["_idx_m"] == i]
+
+        outputs["mask"] = mask
+        outputs["_atomic_numbers_padded"] = atomic_numbers_padded
+        outputs["_positions_padded"] = positions_padded
+        """
 
         return outputs
 
