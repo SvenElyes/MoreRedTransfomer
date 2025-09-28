@@ -1,6 +1,6 @@
 from abc import abstractmethod
 from typing import Dict, List, Optional, Tuple, Union
-
+import logging
 import torch
 from schnetpack import properties
 from torch import nn
@@ -11,6 +11,8 @@ from morered.sampling import Sampler
 from morered.utils import compute_neighbors, scatter_mean
 
 __all__ = ["MoreRed", "MoreRedJT", "MoreRedITP", "MoreRedAS"]
+
+logger = logging.getLogger(__name__)
 
 
 class MoreRed(Sampler):
@@ -93,7 +95,10 @@ class MoreRed(Sampler):
 
         # set all atoms as neighbors and compute neighbors only once before starting.
         if not self.recompute_neighbors:
-            batch = compute_neighbors(batch, fully_connected=True, device=self.device)
+            if self.masked:
+                batch = compute_neighbors(batch, fully_connected=True, device=self.device,additional_keys = [ 'mask', '_atomic_numbers_padded', '_positions_padded'] if self.masked else None)
+            else:
+                batch = compute_neighbors(batch, fully_connected=True, device=self.device)
 
         # initialize convergence flag for each molecule
         converged = torch.zeros_like(
@@ -114,7 +119,10 @@ class MoreRed(Sampler):
         while iter < max_steps:
             # update the neighbors list if required
             if self.recompute_neighbors:
-                batch = compute_neighbors(batch, cutoff=self.cutoff, device=self.device)
+                if self.masked:
+                    batch = compute_neighbors(batch, cutoff=self.cutoff, device=self.device,additional_keys = [ 'mask', '_atomic_numbers_padded', '_positions_padded'] if self.masked else None)
+                else:
+                    batch = compute_neighbors(batch, cutoff=self.cutoff, device=self.device)
 
             # get the time steps and noise predictions from the denoiser
             time_steps, noise = self.inference_step(batch, iter)

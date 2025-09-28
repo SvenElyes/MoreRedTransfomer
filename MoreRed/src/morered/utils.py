@@ -122,6 +122,8 @@ def compute_neighbors(
     # create the new batch
     batch = _atoms_collate_fn(batch)
 
+
+
     # add additional keys
     batch.update({k: old_batch[k] for k in additional_keys})
 

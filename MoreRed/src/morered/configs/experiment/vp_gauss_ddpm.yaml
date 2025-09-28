@@ -34,9 +34,13 @@ globals:
 trainer:
   precision: 32
   gradient_clip_val: 0.5
+  max_epochs: 1
 
 data:
-  batch_size: 128
+  batch_size: 2
+  num_train: 4
+  num_val : 4
+  num_test: 4
   num_workers: 8
   pin_memory: True
   transforms:

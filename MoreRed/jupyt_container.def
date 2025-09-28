@@ -1,0 +1,7 @@
+Bootstrap: localimage
+From: /opt/apps/pytorch-2.0.1-gpu.sif
+
+%post
+    pip install --root-user-action=ignore scikit-learn
+    pip install --root-user-action=ignore jupyter
+    pip install --root-user-action=ignore schnetpack==2.1.1

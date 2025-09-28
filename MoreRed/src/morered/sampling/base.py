@@ -30,6 +30,8 @@ class Sampler:
         progress_stride: int = 1,
         results_on_cpu: bool = True,
         device: Optional[torch.device] = None,
+        masked: Optional[bool]= False
+
     ):
         """
         Args:
@@ -42,7 +44,9 @@ class Sampler:
             progress_stride: the stride for saving the progress.
             results_on_cpu: if True, move the returned results to CPU.
             device: the device to use for denoising.
+            masked: if input needs to be having a masked array, neeed to adjust base and ddpm compute_neighbors
         """
+        
         self.diffusion_process = diffusion_process
         self.denoiser = denoiser
         self.cutoff = cutoff
@@ -51,6 +55,7 @@ class Sampler:
         self.recompute_neighbors = recompute_neighbors
         self.results_on_cpu = results_on_cpu
         self.device = device
+        self.masked = masked
 
         if self.device is None:
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -170,6 +175,8 @@ class Sampler:
         # collate batch in a dict of tensors in SchNetPack format
         batch = _atoms_collate_fn(batch)
 
+
+
         # Move input batch to device
         batch = {p: batch[p].to(self.device) for p in batch}
 
@@ -218,7 +225,9 @@ class Sampler:
             )
 
         # prior for t < T: diffuse using p(x_t | x_0)
+        logging.info(f"sample prior t is {t} and input keys are {inputs.keys()} and x_0 shape {x_0.shape}")
         if t is not None:
+            log.info(f"inside the t")
             if isinstance(t, int):
                 t = torch.tensor(t, device=self.device)
             elif not isinstance(t, torch.Tensor):
@@ -242,7 +251,31 @@ class Sampler:
                 inputs[properties.R], inputs[properties.idx_m], **kwargs
             )
 
+
         outputs = {properties.R: x_t.to(device=self.device)}
+        #MOreRed adjustment. We have to return a mask as well.
+        logging.info(f"sampled prior with keys {outputs.keys()} and x_t shape {x_t.shape}")
+        """
+        device = outputs["_atomic_numbers"].device
+        bs = outputs[structure.n_atoms].shape[0]
+        max_atoms = outputs[structure.n_atoms].max()
+
+
+        mask = th.arange(max_atoms, device=device).unsqueeze(0) < outputs["_n_atoms"].unsqueeze(1)
+
+    
+        atomic_numbers_padded = th.zeros(bs, max_atoms, dtype=outputs["_atomic_numbers"].dtype, device=outputs["_atomic_numbers"].device)
+        positions_padded = th.zeros(bs, max_atoms, 3, dtype=outputs["_positions"].dtype, device=outputs["_positions"].device)
+        
+        for i in range(bs):
+            n = outputs[structure.n_atoms][i]
+            atomic_numbers_padded[i, :n] = outputs["_atomic_numbers"][outputs["_idx_m"] == i]
+            positions_padded[i, :n] = outputs[structure.R][outputs["_idx_m"] == i]
+
+        outputs["mask"] = mask
+        outputs["_atomic_numbers_padded"] = atomic_numbers_padded
+        outputs["_positions_padded"] = positions_padded
+        """
 
         return outputs
 
