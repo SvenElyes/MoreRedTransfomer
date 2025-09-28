@@ -256,7 +256,8 @@ class PairEncoder(nn.Module):
         )
         
         target_heads = [Props[t] for t in target_heads]
-        assert self.time_head is True and Props["time"] in target_heads
+        if self.time_head is True:
+            assert Props["time"] in target_heads
         self.heads = nn.ModuleDict(
             {
                 str(target): NodeLevelRegressionHead(
@@ -384,23 +385,24 @@ class PairEncoder(nn.Module):
         #         log.info(f"Forces shape: {out[Props.forces].shape if Props.forces in out else 'N/A'}")'
         #we have to flatten(remove the padding) the output again. 
         f = out[Props.forces]
-        t = out[self.time_output_key] if self.include_time else None
+        t = out[self.time_output_key] if self.time_head else None
 
         #I think we have to do this at first, because our eps(true noise) is in this particualr shape. We could pad
         #this as well and then we wouldnt need to do this?
         valid_forces = f[mask]
 
 
-        valid_time = t[mask] if self.include_time else None
-        #valid time is in shape n_atoms,1 but we need n_atoms
-        valid_time = valid_time.squeeze(-1) if self.include_time else None
+        if self.time_head:
+            valid_time = t[mask]
+            #valid time is in shape n_atoms,1 but we need n_atoms
+            valid_time = valid_time.squeeze(-1) if self.include_time else None
+            inputs[self.time_output_key] = valid_time
 
         #log.info(f"Valid forces shape: {valid_forces.shape} and eps shape {inputs['eps'].shape} and f shape {f.shape}")
         
         #rudementary postrproess in line with schnetpack strucutre.
         
         inputs[self.output_key] = valid_forces
-        inputs[self.time_output_key] = valid_time
         for post in self.postprocessors:
             #happens inplace
             post(inputs)

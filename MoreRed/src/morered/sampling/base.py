@@ -30,6 +30,8 @@ class Sampler:
         progress_stride: int = 1,
         results_on_cpu: bool = True,
         device: Optional[torch.device] = None,
+        masked: Optional[bool]= False
+
     ):
         """
         Args:
@@ -42,7 +44,9 @@ class Sampler:
             progress_stride: the stride for saving the progress.
             results_on_cpu: if True, move the returned results to CPU.
             device: the device to use for denoising.
+            masked: if input needs to be having a masked array, neeed to adjust base and ddpm compute_neighbors
         """
+        
         self.diffusion_process = diffusion_process
         self.denoiser = denoiser
         self.cutoff = cutoff
@@ -51,6 +55,7 @@ class Sampler:
         self.recompute_neighbors = recompute_neighbors
         self.results_on_cpu = results_on_cpu
         self.device = device
+        self.masked = masked
 
         if self.device is None:
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -171,33 +176,6 @@ class Sampler:
         batch = _atoms_collate_fn(batch)
 
 
-
-        ##MoreRed Adjustmet. 
-        #the way its done here, we dont have our mask anymore >:3
-        # we have to do that shit again..§
-
-        
-        #generate batch that is properly padded and doesnt rely on idx list, so the EdgeTransfomer can work with it
-        logger.info(f"again abtch keys {batch.keys} ")
-        device = batch["_atomic_numbers"].device
-        bs = batch[structure.n_atoms].shape[0]
-        max_atoms = batch[structure.n_atoms].max()
-
-
-        mask = th.arange(max_atoms, device=device).unsqueeze(0) < batch["_n_atoms"].unsqueeze(1)
-
-    
-        atomic_numbers_padded = th.zeros(bs, max_atoms, dtype=batch["_atomic_numbers"].dtype, device=batch["_atomic_numbers"].device)
-        positions_padded = th.zeros(bs, max_atoms, 3, dtype=batch["_positions"].dtype, device=batch["_positions"].device)
-        
-        for i in range(bs):
-            n = batch[structure.n_atoms][i]
-            atomic_numbers_padded[i, :n] = batch["_atomic_numbers"][batch["_idx_m"] == i]
-            positions_padded[i, :n] = batch[structure.R][batch["_idx_m"] == i]
-
-        batch["mask"] = mask
-        batch["_atomic_numbers_padded"] = atomic_numbers_padded
-        batch["_positions_padded"] = positions_padded
 
         # Move input batch to device
         batch = {p: batch[p].to(self.device) for p in batch}

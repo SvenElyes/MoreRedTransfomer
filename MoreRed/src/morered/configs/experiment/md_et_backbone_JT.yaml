@@ -2,81 +2,20 @@
 
 defaults:
   #- override /model: nnp
-  - override /data: qm9_filtered
-  - override /task: diffusion_task
+  - md_et_backbone
   - override /sampler: morered_jt
 
 run:
   experiment: mdet_et_backbone_JT
 
 globals:
-  cutoff: 5.
-  lr: 1e-4
-  n_atom_basis: 256
-  noise_target_key: eps
-  noise_output_key: eps_pred
   time_target_key: t
   time_output_key: t_pred
+  grad_accum_steps: 2
 
-  max_atoms:
-    _target_: morered.utils.get_max_atoms
-    #dataset: ${data}
-  
-  noise_schedule:
-    _target_: morered.noise_schedules.PolynomialSchedule
-    T: 1000
-    s: 1e-5
-    dtype: float64
-    variance_type: lower_bound
 
-  diffusion_process:
-    _target_: morered.processes.VPGaussianDDPM
-    noise_schedule: ${globals.noise_schedule}
-    invariant: True 
-    noise_key: ${globals.noise_target_key}
-    dtype: float64
-
-trainer:
-  precision: 32
-  gradient_clip_val: 0.5
-  max_epochs: 1
-
-data:
-  batch_size: 2
-  num_train: 4
-  num_workers: 8
-  num_val : 4
-  num_test: 4
-  pin_memory: True
-  transforms:
-    - _target_: schnetpack.transform.CastTo64
-    - _target_: schnetpack.transform.SubtractCenterOfGeometry
-
-    - _target_: morered.transform.Diffuse
-      diffuse_property: _positions
-      diffusion_process: ${globals.diffusion_process}
-      time_key: ${globals.time_target_key}
-
-    - _target_: morered.transform.AllToAllNeighborList
-    - _target_: schnetpack.transform.CastTo32
 
 model:
-  _target_: morered.model.heads_pe.PairEncoder
-  activation: gelu
-  attention_dropout: 0.1
-  cls_token: false
-  decomposer_type: pooling
-  embd_dim: 192
-  ffn_dropout: 0.0
-  ffn_multiplier: 4
-  head_dropout: 0.0
-  n_layers: 12
-  norm: layer
-  norm_first: true
-  num_3d_kernels: 128
-  num_heads: 12
-  head_project_down: true
-  output_key: ${globals.noise_output_key}
   include_time: True
   target_heads: ["forces","time"]
   time_head: True
@@ -126,10 +65,4 @@ task:
         # noise_key: ${globals.noise_target_key}
         # noise_pred_key: ${globals.noise_output_key}
 
-sampler:
-  denoiser: null
-
-callbacks:
-  sampling:
-    t: null
-    max_steps: 200
+    

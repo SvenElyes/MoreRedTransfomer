@@ -53,7 +53,7 @@ Just some thoughts
    - vectorizing the loading of data into the padded arrays? Is it possible? Maybe move a bit ahead
 - Include the JT Appraoch of MoreRed, where the EdgeTransfomer also predicts time. This should be very simple, as we already have the heads part given.
 - adding Rotational Noise to the diffusion process in the hope of learning equivariance more.
-- investigate long waiting time before start of training (possible JIT precompilation)
+- investigate long waiting time before start of training (possible JIT precompilation) :white_check_mark:
 - Make a comparison run of the models own postprocessrun and have it as a Hydra Variable?
 - Make Qm7 work (dont forget to bind correctly)
    -using QM7x from quantum max datasets doesnt work bc its missing some key dcit metadata json file  
@@ -103,4 +103,42 @@ diffusion step t per molecule per batch instead of using the whole trajectory fo
 - introdcue a flag that makes the mask optional, so it still runs (in normal mode)
 - profiler doesnt work with my MDET because its not perfectiny in line pytorchlightning lingo and callback
 - th .compile makes for small batches(train no sense). 5mintues extra.
-- number of Parameters?
+- number of Parameters of MOdel (Transformer has 6M Painn has 3M not fair?)
+- invariant flag in the difffusion process? What does it do,
+- from simple.md dev: Exclude head 76 (i had aalso a CUDA MISSMATCH with the gpu there )
+   -slurm:
+  cpus: 6
+  exclude: head073,head024
+  gpu_types: h100|80gb
+  gpus: 1
+  mem: 48GB
+  n_tasks: 1
+  notify_email: null
+  output_dir: logs
+  partition: gpu-2d
+
+  -BaseSlurmConfig = builds(
+    SlurmConfig,
+    partition="gpu-2d",
+    cpus_per_task=4,
+    gpus_per_task=1,
+    memory_gb=16,
+    nodes=1,
+    tasks_per_node=1,
+    exclude="head076",
+    constraint="h100|80gb|40gb",
+)
+- ithink the first .yaml takes presendence
+
+- did we remove this part(from the smiple md paper)
+Frame-averaging For some simulations, we observe that frame-averaging [45] helps to improve MD
+stability. For frame-averaging we use M rotation matrices to pass M different orientations of the input
+positions to the model. We then apply the inverse rotations to the predicted forces and average them.
+We discuss the effects of frame-averaging in section 4.4. We use frame-averaging only where explicitly
+stated. For implementation details, see section 4.4 and Appendix A.5.
+
+-implementing equivariance error like in simple.md, Update: Max said its fine.
+-is it fair to compare if its not same GPU (h1000 vs a1000 especially if talking abut gpu ram)
+- was it ok to take QM9 from shared data, (i think i created it, check if poss)
+- investigate when and how the training eactually conclueds?
+- make the torch.compile static maybe dynamic? 

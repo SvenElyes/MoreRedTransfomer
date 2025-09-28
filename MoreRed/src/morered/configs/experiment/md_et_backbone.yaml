@@ -7,7 +7,7 @@ defaults:
   - override /sampler: ddpm
 
 run:
-  experiment: vp_gauss_ddpm
+  experiment: md_et_backbone
 
 globals:
   cutoff: 5.
@@ -42,7 +42,11 @@ trainer:
 
 data:
   batch_size: 4
+  num_train: 4
   num_workers: 4
+  num_val: 4
+  num_test: 4
+  
   pin_memory: True
   transforms:
     - _target_: schnetpack.transform.CastTo64
@@ -112,8 +116,9 @@ task:
 
 sampler:
   denoiser: null
+  masked: True
 
 callbacks:
   sampling:
     t: null
-    max_steps: null
+    max_steps: 200

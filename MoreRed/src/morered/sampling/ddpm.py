@@ -118,16 +118,23 @@ class DDPM(Sampler):
 
         # set all atoms as neighbors and compute neighbors only once before starting.
         if not self.recompute_neighbors:
-            batch = compute_neighbors(batch, fully_connected=True, device=self.device)
-
+            #TODO: maybe cleaner with kwargs
+            if self.masked:
+                batch = compute_neighbors(batch, fully_connected=True, device=self.device,additional_keys = [ 'mask', '_atomic_numbers_padded', '_positions_padded'])
+            else:
+                batch = compute_neighbors(batch, fully_connected=True, device=self.device)
         # history of the reverse steps
         hist = []
 
         # simulate the reverse process
         for i in tqdm(range(t - 1, -1, -1)):
             # update the neighbors list if required
+            #TODO: cleaner with kwargs
             if self.recompute_neighbors:
-                batch = compute_neighbors(batch, cutoff=self.cutoff, device=self.device)
+                if self.masked:
+                    batch = compute_neighbors(batch, cutoff=self.cutoff, device=self.device,additional_keys = [ 'mask', '_atomic_numbers_padded', '_positions_padded'] if self.masked else None)
+                else:
+                    batch = compute_neighbors(batch, cutoff=self.cutoff, device=self.device)
 
             # get the time steps and noise predictions from the denoiser
             time_steps, noise = self.inference_step(batch, i)
