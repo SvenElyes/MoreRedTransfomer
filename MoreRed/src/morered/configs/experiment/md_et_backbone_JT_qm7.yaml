@@ -1,5 +1,6 @@
 # @package _global_
 
 defaults:
-  - md_et_backbone
+  #- override /model: nnp
+  - md_et_backbone_JT
   - override /data: qm7x

@@ -941,6 +941,7 @@ from pytorch_lightning.loggers.logger import Logger
 from schnetpack.utils import str2class
 from schnetpack.utils.script import log_hyperparameters, print_config
 from pytorch_lightning.profilers import AdvancedProfiler, PyTorchProfiler, SimpleProfiler
+from morered.utils import batch_rmsd, check_validity, generate_bonds_data
 
 
 
@@ -950,136 +951,166 @@ OmegaConf.register_new_resolver("uuid", lambda x: str(uuid.uuid1()))
 OmegaConf.register_new_resolver("tmpdir", tempfile.mkdtemp, use_cache=True)
 
 
-@hydra.main(config_path=None, config_name=None)
-def eval(_):
-    for run_folder in run_folders:
-        print("="*60)
-        print(f"Evaluating run: {run_folder}")
+@hydra.main(config_path="configs", config_name="train", version_base="1.2")
+def eval(config: DictConfig):
+    """
+    General eval routine for all models defined by the provided hydra configs.
 
-        config_path = os.path.join(run_folder, "config.yaml")
-        ckpt_path = os.path.join(run_folder, "checkpoints/last.ckpt")
+    """
+ 
+    log.info("Running on host: " + str(socket.gethostname()))
 
-        if not os.path.exists(config_path) or not os.path.exists(ckpt_path):
-            print(f"Current script running at: {os.getcwd()}")
-            print(f"Config path: {config_path}")
-            print(f"Checkpoint path: {ckpt_path}")
-            print(f"Missing config or checkpoint for {run_folder}, skipping.")
-            continue
-
-        # Load the Hydra config used for this run
-        config = OmegaConf.load(config_path)
-        print("Loaded config:")
-        # Instantiate datamodule
-        datamodule = hydra.utils.instantiate(config.data)
-        datamodule.prepare_data()
-        datamodule.setup()
-        print("Datamodule instantiated.")
-        # Instantiate model
-        model = hydra.utils.instantiate(config.model)
-        print("Model instantiated.")
-
-        # Instantiate task
-        scheduler_cls = str2class(config.task.scheduler_cls) if config.task.scheduler_cls else None
-        task = hydra.utils.instantiate(
-            config.task,
-            model=model,
-            optimizer_cls=str2class(config.task.optimizer_cls),
-            scheduler_cls=scheduler_cls,
+    if OmegaConf.is_missing(config, "run.data_dir"):
+        log.error(
+            "Config incomplete! You need to specify the data directory `data_dir`."
         )
-         # Init Lightning callbacks
-        callbacks: List[Callback] = []
-        if "callbacks" in config:
-            for _, cb_conf in config["callbacks"].items():
-                if "_target_" in cb_conf:
-                    log.info(f"Instantiating callback <{cb_conf._target_}>")
-                    callbacks.append(hydra.utils.instantiate(cb_conf))
-        # Trainer (no callbacks or logger needed)
-
-        # Init Lightning loggers
-        logger: List[Logger] = []
-
-        if "logger" in config:
-            for _, lg_conf in config["logger"].items():
-                if "_target_" in lg_conf:
-                    log.info(f"Instantiating logger <{lg_conf._target_}>")
-                    logger.append(hydra.utils.instantiate(lg_conf))
-
-
-        trainer = hydra.utils.instantiate(
-            config.trainer,
-            callbacks=callbacks,
-            logger=[],
-            _convert_="partial",
-        )
-
-        # Load checkpoint
-        task = type(task).load_from_checkpoint(ckpt_path)
-
-        # Run testing
-        results = trainer.test(model=task, datamodule=datamodule, verbose=True)
-        print(f"Checkpoint: {ckpt_path}")
-        print("Test results:", results)
-
-
-
-model_path = "/home/svenelzes/MoreRedTransfomer/MoreRed/models/qm9_ddpm.pt"
-
-run_folders = [
-    "/home/svenelzes/MoreRedTransfomer/MoreRed/runs/c7b0d306-9391-11f0-9fa8-a088c251a582",
-    "/home/svenelzes/MoreRedTransfomer/MoreRed/runs/b53a35f4-9356-11f0-9121-e8ebd33aa110",
-    #"/home/svenelzes/MoreRedTransfomer/MoreRed/runs/83389cb2-9356-11f0-b8c1-a088c2c68cbc"
-]
-
-@hydra.main(config_path=None, config_name=None)
-def eval_pt(_):
-    if not os.path.exists(model_path):
-        print(f"Model not found at {model_path}, exiting.")
         return
 
-    # Load the full model
-    morered_model = torch.load(model_path, map_location="cpu")
-    print(f"Loaded model from {model_path}")
-
-    for run_folder in run_folders:
-        print("="*60)
-        print(f"Evaluating run: {run_folder}")
-
-        config_path = os.path.join(run_folder, "config.yaml")
-        if not os.path.exists(config_path):
-            print(f"Config not found at {config_path}, skipping.")
-            continue
-
-        # Load config
-        config = OmegaConf.load(config_path)
-        print("Loaded config")
-
-        # Instantiate datamodule
-        datamodule = hydra.utils.instantiate(config.data)
-        datamodule.prepare_data()
-        datamodule.setup()
-        print("Datamodule instantiated")
-
-        # Wrap the loaded model in the task LightningModule
-        scheduler_cls = str2class(config.task.scheduler_cls) if config.task.scheduler_cls else None
-        task = hydra.utils.instantiate(
-            config.task,
-            model=morered_model,
-            optimizer_cls=str2class(config.task.optimizer_cls),
-            scheduler_cls=scheduler_cls,
+    if not ("model" in config and "data" in config):
+        log.error(
+            """
+                Config incomplete! You have to specify at least `data` and `model`!
+                For an example, try one of our pre-defined experiments:
+                > mrdtrain data_dir=</data/will/be/here> +experiment=<experiment_name>
+            """
         )
-        print("Task instantiated with loaded model")
+        return
 
-        # Instantiate trainer
-        trainer = hydra.utils.instantiate(
-            config.trainer,
-            callbacks=[],
-            logger=[],
-            _convert_="partial",
+    if os.path.exists("config.yaml"):
+        log.info(
+            f"Config already exists in given directory {os.path.abspath('.')}."
+            + " Attempting to continue training."
         )
 
-        # Run testing
-        results = trainer.test(model=task, datamodule=datamodule, verbose=True)
-        print(f"Test results for run {run_folder}:", results)
+        # save old config
+        old_config = OmegaConf.load("config.yaml")
+        count = 1
+        while os.path.exists(f"config.old.{count}.yaml"):
+            count += 1
+        with open(f"config.old.{count}.yaml", "w") as f:
+            OmegaConf.save(old_config, f, resolve=False)
+
+        # resume from latest checkpoint
+        if config.run.ckpt_path is None:
+            if os.path.exists("checkpoints/last.ckpt"):
+                config.run.ckpt_path = "checkpoints/last.ckpt"
+
+        if config.run.ckpt_path is not None:
+            log.info(
+                f"Resuming from checkpoint {os.path.abspath(config.run.ckpt_path)}"
+            )
+    else:
+        with open("config.yaml", "w") as f:
+            OmegaConf.save(config, f, resolve=False)
+
+    if config.get("print_config"):
+        print_config(config, resolve=False)
+    if "matmul_precision" in config and config.matmul_precision is not None:
+        log.info(f"Setting float32 matmul precision to <{config.matmul_precision}>")
+        torch.set_float32_matmul_precision(config.matmul_precision)
+
+    # Set seed for random number generators in pytorch, numpy and python.random
+    if "seed" in config:
+        log.info(f"Seed with <{config.seed}>")
+        seed_everything(config.seed, workers=True)
+    else:
+        log.info("Seed randomly...")
+        seed = random.randint(np.iinfo(np.uint32).min, np.iinfo(np.uint32).max)
+        seed_everything(seed, workers=True)
+
+    if not os.path.exists(config.run.data_dir):
+        os.makedirs(config.run.data_dir)
+
+    # Init Lightning datamodule
+    log.info(f"Instantiating datamodule <{config.data._target_}>")
+    datamodule: LightningDataModule = hydra.utils.instantiate(config.data)
+    
+    
+    datamodule.prepare_data()
+    datamodule.setup()
+    test_loader = datamodule.test_dataloader()
+    batch = next(iter(test_loader))
+    log.info(f" keys of the batch: {batch.keys()} and some values {batch['_positions'][0][:5]}")
+
+    base_dataset= datamodule.test_dataloader().dataset
+
+
+
+    # Init model
+    log.info(f"Instantiating model <{config.model._target_}>")
+    model = hydra.utils.instantiate(config.model)
+
+
+    # Init LightningModule
+    log.info(f"Instantiating task <{config.task._target_}>")
+    scheduler_cls = (
+        str2class(config.task.scheduler_cls) if config.task.scheduler_cls else None
+    )
+
+    task: spk.AtomisticTask = hydra.utils.instantiate(
+        config.task,
+        model=model,
+        optimizer_cls=str2class(config.task.optimizer_cls),
+        scheduler_cls=scheduler_cls,
+    )
+
+    best_model_path = os.path.join(config.globals.checkpoint_path, "best_model")
+    task.model = torch.load(best_model_path)
+    log.info(f"best task model is {task.model}")
+    log.info(f"some emdedding weights {task.model.embedding.nuclear_embedding.embedding.weight[:5]}")
+    # Init Lightning callbacks
+    log.info(f"model in eval is {task.model}")
+    callbacks: List[Callback] = []
+    if "callbacks" in config:
+        for _, cb_conf in config["callbacks"].items():
+            if "_target_" in cb_conf:
+                log.info(f"Instantiating callback <{cb_conf._target_}>")
+                callbacks.append(hydra.utils.instantiate(cb_conf))
+
+    # Init Lightning loggers
+    logger: List[Logger] = []
+
+    if "logger" in config:
+        for _, lg_conf in config["logger"].items():
+            if "_target_" in lg_conf:
+                log.info(f"Instantiating logger <{lg_conf._target_}>")
+                logger.append(hydra.utils.instantiate(lg_conf))
+
+    # Init Lightning trainer
+    log.info(f"Instantiating trainer <{config.trainer._target_}>")
+    
+    profiler = AdvancedProfiler(dirpath="/home/svenelzes/MoreRedTransfomer/MoreRed/profiler", filename="profiler")
+    trainer: Trainer = hydra.utils.instantiate(
+        config.trainer,
+        callbacks=callbacks,
+        logger=logger,
+        profiler= profiler,
+        default_root_dir=os.path.join(config.run.id),
+        _convert_="partial",
+    )
+    log.info(f"run id {config.run.id}")
+    log.info(f"Trainer profiler: {trainer.profiler}")
+
+
+    log.info("Logging hyperparameters.")
+    log_hyperparameters(config=config, model=task, trainer=trainer)
+
+    # Train the model
+    log.info("Skip training in eval")
+    #trainer.fit(model=task, datamodule=datamodule, ckpt_path=config.run.ckpt_path)
+
+
+    # Evaluate model on test set after training
+    log.info("Starting testing.")
+    trainer.test(model=task, datamodule=datamodule)
+
+    log.info("log RMSD ratio explicitly.")
+    sampled_dataset = model(base_dataset)
+    rmsd = batch_rmsd(sampled_dataset, base_dataset)
+    log.info(f"RMSD is {rmsd}")
+
+
+
 
 
 

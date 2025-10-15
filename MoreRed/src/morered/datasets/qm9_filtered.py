@@ -143,18 +143,6 @@ class QM9Filtered(QM9):
             self._val_dataset = self.dataset.subset(self.val_idx)  # type: ignore
             self._test_dataset = self.dataset.subset(self.test_idx)  # type: ignore
             log.info(f"Train dataset has {len(self._train_dataset)} molecules and is of type {type(self._train_dataset)}")
-            """
-            structure keys
-            [2025-09-09 15:57:01,623][morered.datasets.qm9_filtered][INFO] -
-              structure list schnetpack ['Final', 'R', 'R_strained', 'Rij', 'Rij_lr', 'Z',
-               '__annotations__', '__builtins__', '__cached__', '__doc__', '__file__', '__loader__', '__name__', '__package__',
-                '__spec__', 'cell', 'cell_strained', 'dipole_derivatives', 'dipole_moment', 'electric_field', 
-                'energy', 'forces', 'hessian', 'idx', 'idx_i', 'idx_i_lr', 'idx_i_triples', 'idx_j', 'idx_j_lr',
-                 'idx_j_triples', 'idx_k_triples', 'idx_m', 'lidx_i', 'lidx_j', 'magnetic_field', 'masses',
-                  'n_atoms', 'n_nbh', 'nuclear_magnetic_moments', 'nuclear_spin_coupling', 'offsets', 'offsets_lr',
-                   'partial_charges', 'pbc', 'polarizability', 'polarizability_derivatives', 'position', 
-                   'required_external_fields', 'seg_m', 'shielding', 'spin_multiplicity', 'strain', 'stress', 'total_charge']
-            """
         ## MORERED ADJUSTMENT
         log.info(f"loaded {type(self.dataset)} with {len(self.dataset)} molecules")
         self._setup_transforms()
@@ -253,6 +241,7 @@ class QM9Filtered(QM9):
                     new_sample = {k: v.clone() for k, v in sample.items()}  # deep copy
                     # Random rotation
                     R = self._get_random_rotations(1, positions.device)  # returns (1,3,3)
+                    log.info(f"dtype of R is {R.dtype}, positions is {positions.dtype}")
                     rotated_positions = torch.bmm(positions.unsqueeze(0), R).squeeze(0)
                     new_sample[structure.R] = rotated_positions
 

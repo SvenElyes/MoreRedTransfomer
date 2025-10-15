@@ -306,7 +306,8 @@ class PairEncoder(nn.Module):
             """
             out[Props.forces] = forces * mask.unsqueeze(-1)
             log.warning(f"Post-processed {1 - (mask.sum() / mask.numel()):.2%} of forces with mask")"""
-            log.info("The ET would have post processed the forces, in a context of predicting Noise, does it make sense?\n skipping if for now...")
+            #log.info("The ET would have post processed the forces, in a context of predicting Noise, does it make sense?\n skipping if for now...")
+            pass
         return out
 
     def _init_weights(self, module) -> None:
@@ -473,6 +474,7 @@ class PairEmbedding(nn.Module):
 
         device = inputs["_atomic_numbers"].device
         mask = inputs["mask"]
+        
     
         #multiplicity and charge a re both scalar( 1 dim, look up in the frozendict)
         multiplicity = th.ones_like(inputs["_n_atoms"],device=device).unsqueeze(-1)
@@ -613,7 +615,7 @@ class FFN(nn.Module):
         self.embed_dim = embed_dim
         self.dropout = dropout
 
-    #@th.compile
+    @th.compile
     def forward(self, x_prior, x) -> th.Tensor:
         x = self.dropout_aggregate(x)
         x = x_prior + x
@@ -684,7 +686,7 @@ class FastEdgeAttention(nn.Module):
         self.olin = nn.Linear(embed_dim, embed_dim, bias=False)
         self.dropout = nn.Dropout(p=dropout)
 
-    #@th.compile
+    @th.compile
     def forward(self, query, key, value, mask=None) -> th.Tensor:
         num_batches = query.size(0)
         num_nodes_q = query.size(1)

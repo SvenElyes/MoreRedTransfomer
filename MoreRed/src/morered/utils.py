@@ -167,6 +167,7 @@ def batch_rmsd(references: torch.Tensor, samples: Dict[str, torch.Tensor]):
     res = []
 
     # loop over molecules/systems
+    
     for m in samples[properties.idx_m].unique():
         # get the indices of the current molecule
         mask = samples[properties.idx_m] == m

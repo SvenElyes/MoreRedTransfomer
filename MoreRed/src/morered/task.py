@@ -285,6 +285,7 @@ class DiffusionTask(AtomisticTask):
             on_epoch=(subset != "train"),
             prog_bar=(subset != "train"),
         )
+        #log.info(f"log metrics {self.log_metrics}")
         self.log_metrics(pred, targets, subset)
 
         # pefrom an extra forward pass for t=0 and log the NLL

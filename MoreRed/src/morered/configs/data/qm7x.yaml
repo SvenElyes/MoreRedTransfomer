@@ -5,6 +5,7 @@ _target_: morered.datasets.QM7X
 
 datapath: ${run.data_dir}/qm7x.db  # data_dir is specified in train.yaml
 raw_data_path: ${run.data_dir}
+split_file: ${run.data_dir}/split.npz
 remove_duplicates: True
 only_equilibrium: True
 batch_size: 128

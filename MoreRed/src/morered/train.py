@@ -19,6 +19,9 @@ from pytorch_lightning.loggers.logger import Logger
 from schnetpack.utils import str2class
 from schnetpack.utils.script import log_hyperparameters, print_config
 from pytorch_lightning.profilers import AdvancedProfiler, PyTorchProfiler, SimpleProfiler
+from pytorch_lightning.callbacks import DeviceStatsMonitor
+import hashlib
+
 
 
 log = logging.getLogger(__name__)
@@ -111,13 +114,6 @@ def train(config: DictConfig):
     # Init Lightning datamodule
     log.info(f"Instantiating datamodule <{config.data._target_}>")
     datamodule: LightningDataModule = hydra.utils.instantiate(config.data)
-    
-    
-    datamodule.prepare_data()
-    datamodule.setup()
-    test_loader = datamodule.test_dataloader()
-    batch = next(iter(test_loader))
-    log.info(f" keys of the batch: {batch.keys()}")
 
 
     # Init model
@@ -157,7 +153,7 @@ def train(config: DictConfig):
 
     # Init Lightning trainer
     log.info(f"Instantiating trainer <{config.trainer._target_}>")
-    
+    callbacks.append(DeviceStatsMonitor())
     profiler = AdvancedProfiler(dirpath="/home/svenelzes/MoreRedTransfomer/MoreRed/profiler", filename="profiler")
     trainer: Trainer = hydra.utils.instantiate(
         config.trainer,
@@ -178,14 +174,6 @@ def train(config: DictConfig):
     log.info("Starting training.")
     trainer.fit(model=task, datamodule=datamodule, ckpt_path=config.run.ckpt_path)
 
-    """Traceback (most recent call last):
-        File "/home/svenelzes/MoreRedTransfomer/MoreRed/src/morered/train.py", line 181, in train
-            for evt in profiler.profile:
-        TypeError: 'method' object is not iterable
-
-            for evt in profiler.profile:
-                log.info(f"{evt.key}: {evt.cpu_time:.3f} ms, {evt.cuda_time:.3f} ms")
-    """
 
     # Evaluate model on test set after training
     log.info("Starting testing.")
@@ -198,6 +186,7 @@ def train(config: DictConfig):
     log.info("Store best model")
     best_task = type(task).load_from_checkpoint(best_path)
     torch.save(best_task, config.globals.model_path + ".task")
-
+    log.info(f"best task model is {best_task.model}")
+    log.info(f"some emdedding weights {best_task.model.embedding.nuclear_embedding.embedding.weight[:5]}")
     best_task.save_model(config.globals.model_path, do_postprocessing=True)
     log.info(f"Best model stored at {os.path.abspath(config.globals.model_path)}")

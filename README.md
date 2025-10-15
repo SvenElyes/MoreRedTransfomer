@@ -63,6 +63,9 @@ Just some thoughts
       which means its not correc squashfs(accrdoing to chatgpt)
       FATAL ERROR: Can't find a valid SQUASHFS superblock on QM7-X.sqfs
    -redownlaoded and parsed qm7 and will move it into /home/space/datasets-sqfs/(TU BERLIN HYDRA HPC) under QM7-X_svenelzes.sqfs (in progress)
+   - giving the process more ram seemed to work.
+   -INFO:morered.datasets.qm7_x:dtype of R is torch.float32, positions is torch.float64
+   some problem regarding float type
 
 - investigate the numbers of train samples from the MoreRed paper? Something is sus :white_check_mark:
    - 130000 samples in QM9, 55000 in datatraining (with batchsize 4) we get 13500 steps in one epoch. Seems fine
@@ -142,3 +145,6 @@ stated. For implementation details, see section 4.4 and Appendix A.5.
 - was it ok to take QM9 from shared data, (i think i created it, check if poss)
 - investigate when and how the training eactually conclueds?
 - make the torch.compile static maybe dynamic? 
+- QM7 installation worked, after giving the JOB enough RAM (50 GB)
+- Important: Everything happening inside your collate_fn is on CPU. The batch is only transferred to GPU after it leaves the DataLoader.
+- is gradient clip val being used?

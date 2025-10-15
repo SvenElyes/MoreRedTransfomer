@@ -41,11 +41,7 @@ trainer:
   max_epochs: 10
 
 data:
-  batch_size: 4
-  num_train: 4
-  num_workers: 4
-  num_val: 4
-  num_test: 4
+  batch_size: 128
   
   pin_memory: True
   transforms:
@@ -121,4 +117,4 @@ sampler:
 callbacks:
   sampling:
     t: null
-    max_steps: 200
+    max_steps: 2000

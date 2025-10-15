@@ -1,13 +1,13 @@
 # @package _global_
 
 defaults:
-  - override /model: nnp
+  #- override /model: nnp
   - override /data: qm7x
   - override /task: diffusion_task
   - override /sampler: ddpm
 
 run:
-  experiment: vp_gauss_ddpm
+  experiment: eval_md
 
 globals:
   cutoff: 5.
@@ -16,6 +16,12 @@ globals:
   noise_target_key: eps
   noise_output_key: eps_pred
   time_target_key: t
+
+  checkpoint_path: null
+
+  max_atoms:
+    _target_: morered.utils.get_max_atoms
+    #dataset: ${data}
   
   noise_schedule:
     _target_: morered.noise_schedules.PolynomialSchedule
@@ -34,10 +40,12 @@ globals:
 trainer:
   precision: 32
   gradient_clip_val: 0.5
+  max_epochs: 10
 
 data:
-  batch_size: 128
-  num_workers: 8
+  batch_size: 4
+  num_workers: 4
+  
   pin_memory: True
   transforms:
     - _target_: schnetpack.transform.CastTo64
@@ -52,27 +60,32 @@ data:
     - _target_: schnetpack.transform.CastTo32
 
 model:
-  representation:
-    radial_basis:
-      _target_: schnetpack.nn.radial.GaussianRBF
-      n_rbf: 20
-      cutoff: ${globals.cutoff}
-    n_atom_basis: ${globals.n_atom_basis}
-  output_modules:
-    - _target_: morered.model.heads.TimeAwareEquivariant
-      n_in: ${globals.n_atom_basis}
-      n_hidden: null
-      n_layers: 3
-      output_key: ${globals.noise_output_key}
-      include_time: True
-      time_head: null
-      detach_time_head: False
-      time_key: ${globals.time_target_key}
-  do_postprocessing: True
-  postprocessors:
-    - _target_: morered.transform.BatchSubtractCenterOfMass
-      name: ${globals.noise_output_key}
-    - _target_: schnetpack.transform.CastTo64
+  _target_: morered.model.heads_pe.PairEncoder
+  activation: gelu
+  attention_dropout: 0.1
+  cls_token: false
+  decomposer_type: pooling
+  embd_dim: 192
+  ffn_dropout: 0.0
+  ffn_multiplier: 4
+  head_dropout: 0.0
+  n_layers: 12
+  norm: layer
+  norm_first: true
+  num_3d_kernels: 128
+  num_heads: 12
+  head_project_down: true
+  output_key: ${globals.noise_output_key}
+  include_time: True
+  target_heads: ["forces"]
+  time_head: null
+  detach_time_head: False
+  time_key: ${globals.time_target_key}
+  #do_postprocessing: True
+  #postprocessors:
+  #- _target_: morered.transform.BatchSubtractCenterOfMass
+  #  name: ${globals.noise_output_key}
+  #- _target_: schnetpack.transform.CastTo64
 
 task:
   diffuse_property: _positions
@@ -102,8 +115,9 @@ task:
 
 sampler:
   denoiser: null
+  masked: True
 
 callbacks:
   sampling:
     t: null
-    max_steps: null
+    max_steps: 200

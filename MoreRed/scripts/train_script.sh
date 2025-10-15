@@ -1,16 +1,17 @@
 #!/bin/bash
-#SBATCH --job-name=evaluate_mdet
-#SBATCH --partition=gpu-9m
+#SBATCH --job-name=morered_train
+#SBATCH --partition=gpu-2h
 #SBATCH --gpus-per-node=1
-#SBATCH --ntasks-per-node=1
-#SBATCH --output=logs/eval/eval%j.out
+#SBATCH --ntasks-per-node=2
+#SBATCH --output=logs/MDET/train_mdtrain-%j.out
 
 # 1. copy the squashed dataset to the nodes /tmp 
 cp /home/space/datasets-sqfs/QM9.sqfs /tmp/
 
 # 2. bind the squashed dataset to your apptainer environment and run your script with apptainer
 #apptainer run -B /tmp/QM9.sqfs:/input-data:image-src=/ old_container.sif python -u ../src/scripts/mrdtrain experiment=my_vp_gauss_clean run.data_dir="/input-data/energy_U0"
-apptainer run --nv -B /tmp/QM9.sqfs:/input-data:image-src=/ old_container3.sif python -u src/scripts/mrdeval 
+apptainer run --nv -B /tmp/QM9.sqfs:/input-data:image-src=/ old_container3.sif python -u src/scripts/mrdtrain experiment=md_et_backbone run.data_dir="/input-data/energy_U0" +matmul_precision="medium" \
+data.batch_size=4 data.num_workers=1 data.num_train=8 data.num_val=8 data.num_test=2 trainer.max_epochs=2
 
 #dont forget to adjust the ssh command to connect to the correct head and the port(adjust the port if needed)
 

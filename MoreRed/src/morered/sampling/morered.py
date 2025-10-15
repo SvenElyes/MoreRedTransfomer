@@ -76,6 +76,7 @@ class MoreRed(Sampler):
                     inluding the starting x_t.
             max_steps: the maximum number of reverse steps to perform.
         """
+        logging.info("in the MORERED denoise ")
         # Default maximum number of steps
         if max_steps is None:
             max_steps = self.diffusion_process.get_T()
